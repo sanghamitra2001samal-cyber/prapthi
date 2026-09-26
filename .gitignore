@@ -44,9 +44,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Large media pulled from the live site (regenerate with the mirror script)
-site/assets/*.png
-site/brand/*.png
-
 # Local tooling
 .claude/launch.json
