@@ -1,0 +1,58 @@
+api.prapthi.ai, prapthi.ai {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				response_header_timeout 900s
+				read_timeout 900s
+			}
+		}
+	}
+
+	handle_path /app/* {
+		root * /home/apple/prapthi/web-dist-app
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle {
+		root * /home/apple/prapthi/web-dist
+
+		# One address per page: /pricing.html permanently becomes /pricing,
+		# and /index.html becomes /. Everything keeps working from old links
+		# and search results, which now point at the clean address.
+		@htmlext {
+			path_regexp htmlext ^/(.+)\.html$
+			not path /index.html
+		}
+		redir @htmlext /{re.htmlext.1} 301
+		redir /index.html / 301
+
+		# No /index.html fallback: a static site should answer 404 for a page
+		# that does not exist, not hand back the homepage with a 200.
+		try_files {path} {path}.html
+		file_server
+	}
+
+	handle_errors {
+		@notfound expression {err.status_code} == 404
+		handle @notfound {
+			root * /home/apple/prapthi/web-dist
+			rewrite * /404.html
+			file_server
+		}
+	}
+
+	encode {
+		zstd better
+		gzip
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+}
+
+www.prapthi.ai {
+	redir https://prapthi.ai{uri} permanent
+}

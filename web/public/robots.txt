@@ -1,0 +1,5 @@
+# Prapthi AI — allow all crawlers
+User-agent: *
+Allow: /
+
+Sitemap: https://prapthi.ai/sitemap.xml

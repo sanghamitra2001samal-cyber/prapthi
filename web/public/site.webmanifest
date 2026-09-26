@@ -1,0 +1,12 @@
+{
+  "name": "Prapthi AI",
+  "short_name": "Prapthi AI",
+  "description": "Realistic AI text-to-speech and voice cloning in 50+ languages.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#3a0d2a",
+  "theme_color": "#3a0d2a",
+  "icons": [
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

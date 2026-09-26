@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "vite-preview", "runtimeExecutable": "npm", "runtimeArgs": ["run","preview","--","--port","4319"], "port": 4319 },
+    { "name": "studio-dev", "runtimeExecutable": "sh", "runtimeArgs": ["-c","VOXFORGE_LOCAL_API=https://api.prapthi.ai PORT=5177 npm run dev"], "port": 5177 }
+  ]
+}

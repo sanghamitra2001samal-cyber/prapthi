@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Google Search Console verification -->
+    <meta name="google-site-verification" content="x2JO3h4kVAiNFZ_lNCmCBsMK88ghUdvLsiJBWS2iRlE" />
+
+    <!-- Primary SEO -->
+    <title>Prapthi AI — Realistic AI Text-to-Speech & Voice Cloning</title>
+    <meta
+      name="description"
+      content="Prapthi AI turns any text into stunningly human speech and clones voices — 175+ neural voices across 50+ languages, with emotion. Private, API-free, and fast. Try it free."
+    />
+    <meta
+      name="keywords"
+      content="Prapthi AI, Prapthi, AI text to speech, TTS, AI voice generator, voice cloning, realistic AI voice, Hindi text to speech, Tamil voice, Telugu voice, Indian AI voices, natural voice AI, speech synthesis"
+    />
+    <meta name="author" content="Prapthi AI" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#3a0d2a" />
+    <link rel="canonical" href="https://prapthi.ai/" />
+
+    <!-- Open Graph (Facebook, LinkedIn, WhatsApp previews) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Prapthi AI" />
+    <meta property="og:title" content="Prapthi AI — Realistic AI Text-to-Speech & Voice Cloning" />
+    <meta
+      property="og:description"
+      content="Turn any text into stunningly human speech. 175+ neural voices, 50+ languages, emotion, and voice cloning — private and API-free."
+    />
+    <meta property="og:url" content="https://prapthi.ai/" />
+    <meta property="og:image" content="https://prapthi.ai/logo.png" />
+    <meta property="og:image:alt" content="Prapthi AI — Lifelike AI Voice Platform" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Prapthi AI — Realistic AI Text-to-Speech & Voice Cloning" />
+    <meta
+      name="twitter:description"
+      content="Turn any text into stunningly human speech. 175+ neural voices, 50+ languages, emotion, and voice cloning — private and API-free."
+    />
+    <meta name="twitter:image" content="https://prapthi.ai/logo.png" />
+
+    <link rel="icon" type="image/png" href="/app/logo.png" />
+    <link rel="apple-touch-icon" href="/app/logo.png" />
+    <link rel="manifest" href="/app/site.webmanifest" />
+
+    <!-- Structured data: helps Google understand the brand + show rich results -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://prapthi.ai/#organization",
+            "name": "Prapthi AI",
+            "url": "https://prapthi.ai/",
+            "logo": "https://prapthi.ai/logo.png",
+            "description": "Private, studio-grade AI text-to-speech and voice cloning across 50+ languages.",
+            "sameAs": []
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://prapthi.ai/#website",
+            "url": "https://prapthi.ai/",
+            "name": "Prapthi AI",
+            "publisher": { "@id": "https://prapthi.ai/#organization" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Prapthi AI",
+            "operatingSystem": "Web",
+            "applicationCategory": "MultimediaApplication",
+            "description": "AI text-to-speech and voice cloning with 175+ neural voices across 50+ languages, with emotion. Private and API-free.",
+            "url": "https://prapthi.ai/",
+            "image": "https://prapthi.ai/logo.png",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          }
+        ]
+      }
+    </script>
+    <script type="module" crossorigin src="/app/assets/index-DNwtmg-D.js"></script>
+    <link rel="stylesheet" crossorigin href="/app/assets/index-D4W5Tw46.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

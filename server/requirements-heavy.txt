@@ -1,0 +1,20 @@
+# Optional heavy engines — MMS (more Indian languages) and Parler HD.
+# Install with: pip install -r requirements-heavy.txt   (then ./setup.sh mms|parler)
+# Intel-mac constraint: torch 2.2.2 is the last x86 build; it requires
+# transformers<5 and numpy<2 (NumPy 1.x ABI). All versions pinned.
+torch==2.2.2
+transformers==4.46.3
+numpy==1.26.4
+accelerate==1.14.0
+sentencepiece==0.2.1
+protobuf==4.25.9
+
+# Parler-only audio codec stack (descript-audio-codec pulls librosa/numba).
+descript-audio-codec==1.0.0
+numba==0.61.2
+llvmlite==0.44.0
+soundfile==0.14.0
+
+# parler-tts has no PyPI release; install a PINNED commit (not floating main):
+#   pip install --no-deps "git+https://github.com/huggingface/parler-tts.git@<commit-sha>"
+# Pin a reviewed commit and record its SHA here before shipping.

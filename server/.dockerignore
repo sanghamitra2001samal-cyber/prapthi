@@ -1,0 +1,9 @@
+# Never copy secrets, caches, or local state into the image.
+.venv/
+.cache/
+auth_users.json
+.auth_secret
+MASTER_CREDENTIALS.txt
+models/
+*.log
+__pycache__/

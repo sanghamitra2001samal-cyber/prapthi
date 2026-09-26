@@ -1,0 +1,52 @@
+# dependencies
+web/node_modules/
+server/.venv/
+
+# builds
+web/dist/
+web/.vite/
+
+# Piper engine artifacts (downloaded by server/setup.sh)
+server/models/
+
+# Server-side audio cache
+server/.cache/
+
+# Auth secrets & credentials (NEVER commit)
+server/auth_users.json
+server/.auth_secret
+server/MASTER_CREDENTIALS.txt
+
+# logs & os
+*.log
+.DS_Store
+
+# --- added 2026-09-26 ---------------------------------------------------- #
+# Credentials. The real .env lives only on the server; never let one in here.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+server/if5_refs/          # generated reference clips, rebuildable
+
+# Backup copies made during deploys and migrations
+*.bak
+*.bak-*
+*.old-*
+.server-backup-*/
+server/*.py.bak*
+server/*.bak*
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Large media pulled from the live site (regenerate with the mirror script)
+site/assets/*.png
+site/brand/*.png
+
+# Local tooling
+.claude/launch.json
