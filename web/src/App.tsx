@@ -7,6 +7,7 @@ import { Dashboard } from './components/Dashboard';
 import Landing from './pages/Landing';
 import Help from './pages/Help';
 import About from './pages/About';
+import Admin from './pages/Admin';
 import Pricing from './pages/Pricing';
 import NotFound from './pages/NotFound';
 
@@ -79,6 +80,16 @@ export default function App() {
         <Route path="/about" element={UNDER_SITE ? <SiteRedirect to="/about" /> : <About />} />
         {/* Checkout lives here — it must NOT redirect to the marketing page. */}
         <Route path="/pricing" element={<Pricing />} />
+        {/* Owner only. The component sends non-admins away, and the server
+            answers 404 to them regardless, so the route leaks nothing. */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth>
+              <Admin />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/dashboard"
           element={

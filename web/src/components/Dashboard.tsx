@@ -42,7 +42,6 @@ import { VoiceCloning } from './VoiceCloning';
 import { VoiceAgent } from './VoiceAgent';
 import { AudioNative } from './AudioNative';
 import { AdsEngine } from './AdsEngine';
-import { AdminPanel } from './AdminPanel';
 import { VoicePicker } from './VoicePicker';
 import { SettingsPanel, SettingsRail } from './SettingsPanel';
 import { HistoryPanel } from './HistoryPanel';
@@ -162,7 +161,7 @@ export function Dashboard() {
     list.push({ icon: HelpCircle, label: 'Help', group: 'Page', run: () => navigate('/help') });
     list.push({ icon: Info, label: 'About', group: 'Page', run: () => navigate('/about') });
     if (isAdmin)
-      list.push({ icon: Users, label: 'Users & Logins', group: 'Admin', run: () => go('admin') });
+      list.push({ icon: Users, label: 'Master control', group: 'Admin', run: () => navigate('/admin') });
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openOverlay, navigate, isAdmin]);
@@ -234,7 +233,6 @@ export function Dashboard() {
               {view === 'ads' && <AdsEngine />}
               {view === 'agent' && <VoiceAgent />}
             </>)}
-            {view === 'admin' && isAdmin && <AdminPanel />}
           </main>
           {view === 'studio' && <SettingsRail />}
         </div>
