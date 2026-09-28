@@ -370,7 +370,7 @@ async def get_account(email: str) -> Optional[dict[str, Any]]:
     async with pool.connection() as conn:
         row = await (await conn.execute(
             """SELECT plan, chars_allowance, chars_used, period_start,
-                      plan_expires_at,
+                      plan_expires_at, is_admin,
                       (plan_expires_at IS NOT NULL AND plan_expires_at < now())
                         AS expired
                  FROM users WHERE email = %s""",

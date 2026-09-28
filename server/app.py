@@ -1318,6 +1318,10 @@ def _run_dub_pipeline(jid: str, in_path: str, ext: str, tgt: str,
 
 
 async def _charge(email: str, op: str, seconds: float = 1.0):
+    # The owner is not billed for their own platform.
+    _acct = await db.get_account(email)
+    if _acct and _acct.get("is_admin"):
+        return None
     """Charge an operation against the monthly allowance.
 
     Returns None when it went through, or a JSONResponse to return to the
@@ -2132,7 +2136,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
             )
         # Signed-in synthesis is charged against the monthly character
         # allowance. The demo endpoint is free (already capped + rate limited).
-        if not demo and _user:
+        if not demo and _user and not _user.get("is_admin"):
             await db.reset_period_if_due(_user["email"])
             ok, remaining = await db.consume_chars(_user["email"], len(text))
             if not ok:
@@ -2458,13 +2462,18 @@ async def billing_plans(request: Request) -> JSONResponse:
         await db.reset_period_if_due(user["email"])
         account = await db.get_account(user["email"])
         if account:
-            account = {
-                "plan": "free" if account["expired"] else account["plan"],
-                "chars_allowance": 12000 if account["expired"] else account["chars_allowance"],
-                "chars_used": account["chars_used"],
-                "expires_at": account["plan_expires_at"].isoformat()
-                if account["plan_expires_at"] else None,
-            }
+            if entitlements.effective_plan(account) == "owner":
+                # The owner is not on a plan and has no allowance to spend.
+                account = {"plan": "owner", "chars_allowance": None,
+                           "chars_used": 0, "expires_at": None}
+            else:
+                account = {
+                    "plan": "free" if account["expired"] else account["plan"],
+                    "chars_allowance": 12000 if account["expired"] else account["chars_allowance"],
+                    "chars_used": account["chars_used"],
+                    "expires_at": account["plan_expires_at"].isoformat()
+                    if account["plan_expires_at"] else None,
+                }
     return JSONResponse({
         "plans": billing.public_plans(),
         "enabled": billing.enabled(),

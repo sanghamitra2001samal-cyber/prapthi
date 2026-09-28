@@ -22,7 +22,8 @@ type Plan = {
 };
 type Account = {
   plan?: string;
-  chars_allowance?: number;
+  /** null for the owner, who has no allowance to spend */
+  chars_allowance?: number | null;
   chars_used?: number;
   expires_at?: string | null;
 };
@@ -198,7 +199,17 @@ export default function Pricing() {
       </div>
 
       {/* ------------------------------------------- what you have left */}
-      {account && (
+      {account && current === 'owner' && (
+        <div className="mx-auto mt-9 max-w-lg rounded-2xl border border-[var(--color-accent)] bg-[var(--color-surface)] p-5 text-center">
+          <div className="text-sm font-semibold">Owner account</div>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            Every voice and format, with no character limit. Plans below are what
+            your customers see.
+          </p>
+        </div>
+      )}
+
+      {account && current !== 'owner' && (
         <div className="mx-auto mt-9 max-w-lg rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-[var(--color-muted)]">

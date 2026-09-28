@@ -28,6 +28,9 @@ PREMIUM_PREFIXES = (
 )
 
 FEATURES: dict[str, dict] = {
+    # The owner runs the platform rather than buying from it: every voice,
+    # every format, and no allowance to run out of mid-demo.
+    "owner": {"premium_voices": True,  "clones": 100, "wav": True},
     "free":  {"premium_voices": False, "clones": 0,  "wav": False},
     "mid":   {"premium_voices": True,  "clones": 3,  "wav": True},
     "elite": {"premium_voices": True,  "clones": 10, "wav": True},
@@ -44,6 +47,8 @@ def effective_plan(account: dict | None) -> str:
     """The plan we will actually honour. Unknown or lapsed plans read as free."""
     if not account:
         return "free"
+    if account.get("is_admin"):
+        return "owner"
     if account.get("expired"):
         return "free"
     plan = str(account.get("plan") or "free").lower()
