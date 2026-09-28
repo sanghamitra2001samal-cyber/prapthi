@@ -2437,6 +2437,18 @@ async def synthesize(request: Request) -> Response:
 
 
 
+# --- admin ---------------------------------------------------------------- #
+async def admin_stats_route(request: Request) -> JSONResponse:
+    """Owner-only dashboard data. Refuses anyone who is not an admin, and says
+    nothing useful to them — an ordinary user must not learn this exists."""
+    user = await _current_user(request)
+    if not user:
+        return _unauthorized()
+    if not user.get("is_admin"):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(await db.admin_stats())
+
+
 # --- billing -------------------------------------------------------------- #
 async def billing_plans(request: Request) -> JSONResponse:
     """Plans, whether payments are live, and the caller's own account."""
@@ -2594,6 +2606,7 @@ async def preview(request: Request) -> Response:
 routes = [
     Route("/health", health, methods=["GET"]),
     Route("/capabilities", capabilities, methods=["GET"]),
+    Route("/admin/stats", admin_stats_route, methods=["GET"]),
     Route("/billing/plans", billing_plans, methods=["GET"]),
     Route("/billing/order", billing_order, methods=["POST"]),
     Route("/billing/verify", billing_verify, methods=["POST"]),

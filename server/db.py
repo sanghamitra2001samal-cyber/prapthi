@@ -426,3 +426,98 @@ async def refund_chars(email: str, n: int) -> None:
             "WHERE email = %s",
             (n, email),
         )
+
+
+# --- admin reporting ---------------------------------------------------- #
+async def admin_stats() -> dict[str, Any]:
+    """Counts an owner actually wants: signups, real logins, usage, revenue.
+
+    One round trip per block rather than one giant query, because the blocks
+    are independent and this stays readable as it grows."""
+    async with pool.connection() as conn:
+        async def one(sql, args=()):
+            return await (await conn.execute(sql, args)).fetchone()
+
+        async def many(sql, args=()):
+            return [dict(r) for r in await (await conn.execute(sql, args)).fetchall()]
+
+        totals = await one("""
+            SELECT count(*)                                              AS users,
+                   count(*) FILTER (WHERE is_verified)                   AS verified,
+                   count(*) FILTER (WHERE is_admin)                      AS admins,
+                   count(*) FILTER (WHERE last_login_at IS NOT NULL)     AS ever_logged_in,
+                   count(*) FILTER (WHERE created_at > now() - interval '24 hours') AS new_today,
+                   count(*) FILTER (WHERE created_at > now() - interval '7 days')   AS new_week,
+                   count(*) FILTER (WHERE created_at > now() - interval '30 days')  AS new_month,
+                   count(*) FILTER (WHERE last_login_at > now() - interval '24 hours') AS active_today,
+                   count(*) FILTER (WHERE last_login_at > now() - interval '7 days')   AS active_week,
+                   count(*) FILTER (WHERE last_login_at > now() - interval '30 days')  AS active_month
+              FROM users""")
+
+        usage = await one("""
+            SELECT coalesce(sum(chars_used), 0)::bigint   AS chars_used,
+                   coalesce(sum(chars_allowance), 0)::bigint AS chars_allowance,
+                   count(*) FILTER (WHERE chars_used > 0) AS users_who_generated
+              FROM users""")
+
+        plans = await many("""
+            SELECT plan,
+                   count(*) AS users,
+                   coalesce(sum(chars_used), 0)::bigint AS chars_used
+              FROM users GROUP BY plan ORDER BY count(*) DESC""")
+
+        # a daily series for the last 30 days, with empty days filled in
+        signups = await many("""
+            SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+                   count(u.email)               AS signups
+              FROM generate_series(
+                     (now() - interval '29 days')::date, now()::date, interval '1 day') AS d(day)
+              LEFT JOIN users u ON u.created_at::date = d.day
+             GROUP BY d.day ORDER BY d.day""")
+
+        logins = await many("""
+            SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+                   count(u.email)               AS logins
+              FROM generate_series(
+                     (now() - interval '29 days')::date, now()::date, interval '1 day') AS d(day)
+              LEFT JOIN users u ON u.last_login_at::date = d.day
+             GROUP BY d.day ORDER BY d.day""")
+
+        top = await many("""
+            SELECT email, plan, chars_used, chars_allowance,
+                   to_char(created_at,  'YYYY-MM-DD HH24:MI') AS created_at,
+                   to_char(last_login_at,'YYYY-MM-DD HH24:MI') AS last_login_at,
+                   is_verified
+              FROM users
+             ORDER BY chars_used DESC, created_at DESC
+             LIMIT 25""")
+
+        recent = await many("""
+            SELECT email, plan, is_verified,
+                   to_char(created_at,  'YYYY-MM-DD HH24:MI') AS created_at,
+                   to_char(last_login_at,'YYYY-MM-DD HH24:MI') AS last_login_at
+              FROM users ORDER BY created_at DESC LIMIT 15""")
+
+        revenue = await one("""
+            SELECT count(*) AS payments,
+                   coalesce(sum(amount_paise), 0)::bigint AS paise,
+                   count(*) FILTER (WHERE created_at > now() - interval '30 days') AS payments_month,
+                   coalesce(sum(amount_paise) FILTER (
+                       WHERE created_at > now() - interval '30 days'), 0)::bigint AS paise_month
+              FROM payments""")
+
+        payments = await many("""
+            SELECT email, plan, amount_paise, source,
+                   to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+              FROM payments ORDER BY created_at DESC LIMIT 15""")
+
+        clones = await one("SELECT count(*) AS n FROM cloned_voices")
+        songs = await one("SELECT count(*) AS n FROM songs")
+
+    return {
+        "totals": dict(totals), "usage": dict(usage), "plans": plans,
+        "signups_daily": signups, "logins_daily": logins,
+        "top_users": top, "recent_users": recent,
+        "revenue": dict(revenue), "recent_payments": payments,
+        "clones": clones["n"], "songs": songs["n"],
+    }
