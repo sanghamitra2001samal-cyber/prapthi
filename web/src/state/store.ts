@@ -3,7 +3,9 @@ import { tts } from '../tts/manager';
 import type { Voice } from '../tts/types';
 import {
   loadHistory,
+  purgeSharedHistory,
   saveHistory,
+  setStorageAccount,
   loadPrefs,
   savePrefs,
   storageAvailable,
@@ -267,17 +269,30 @@ export const useStore = create<AppState>((set, get) => ({
   async checkAuth() {
     const who = await authApi.checkAuth();
     if (who) {
-      set({ authStatus: 'in', user: who.user, isAdmin: who.isAdmin });
+      // Point storage at this account BEFORE loading anything, or the studio
+      // would show whatever the previous user of this browser generated.
+      setStorageAccount(who.user);
+      purgeSharedHistory();
+      set({
+        authStatus: 'in', user: who.user, isAdmin: who.isAdmin,
+        history: loadHistory(),
+      });
       await get().init();
     } else {
-      set({ authStatus: 'out', user: null, isAdmin: false });
+      setStorageAccount(null);
+      set({ authStatus: 'out', user: null, isAdmin: false, history: [] });
     }
   },
 
   async login(email, password) {
     const res = await authApi.login(email, password);
     if (res.ok) {
-      set({ authStatus: 'in', user: res.user ?? email, isAdmin: !!res.isAdmin });
+      setStorageAccount(res.user ?? email);
+      purgeSharedHistory();
+      set({
+        authStatus: 'in', user: res.user ?? email, isAdmin: !!res.isAdmin,
+        history: loadHistory(),
+      });
       await get().init();
     }
     return res;
@@ -293,7 +308,13 @@ export const useStore = create<AppState>((set, get) => ({
   async logout() {
     await authApi.logout();
     get().stop();
-    set({ authStatus: 'out', user: null, isAdmin: false, voices: [], voicesLoaded: false });
+    // Drop this account's history from memory so the next person at this
+    // computer sees none of it. Their own copy stays under their own key.
+    setStorageAccount(null);
+    set({
+      authStatus: 'out', user: null, isAdmin: false, voices: [],
+      voicesLoaded: false, history: [], lastGen: null, lastAudioUrl: null,
+    });
     // Leave the studio entirely and land on the site's current sign-in page.
     // A full load (not a client-side route) guarantees no signed-in state or
     // cached view survives, and avoids the studio's own landing page.

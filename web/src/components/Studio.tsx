@@ -2,6 +2,7 @@ import { Play, Pause, Square, Download, SlidersHorizontal, ChevronDown } from 'l
 import { useStore } from '../state/store';
 import { Editor } from './Editor';
 import { ResultPlayer } from './ResultPlayer';
+import { AllowanceBar } from './AllowanceBar';
 
 /** ElevenLabs-style studio: a full-height text canvas with a bottom control
  * bar (voice selector + generate). */
@@ -43,6 +44,7 @@ export function Studio() {
             ℹ Voice server offline — using browser voices only.
           </p>
         )}
+        <AllowanceBar />
         <div className="min-h-0 flex-1">
           <Editor />
         </div>

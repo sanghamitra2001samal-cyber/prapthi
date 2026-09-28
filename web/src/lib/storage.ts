@@ -25,6 +25,33 @@ export interface Prefs {
 }
 
 const HISTORY_KEY = 'vf_history';
+
+/* --- per-account scoping ------------------------------------------------ */
+/* One shared key meant one user could read another's history on the same
+   computer. Every account now gets its own, keyed by a short hash of the email
+   so the address itself is not written into browser storage.                */
+let currentAccount: string | null = null;
+
+function shortHash(s: string): string {
+  // FNV-1a — tiny, stable, and enough to separate accounts. Not a security
+  // boundary: the point is isolation between users of one browser, and the
+  // real protection is that the server never serves another account's data.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/** Point storage at one account. Pass null when signed out. */
+export function setStorageAccount(email: string | null): void {
+  currentAccount = email ? email.trim().toLowerCase() : null;
+}
+
+function historyKey(): string {
+  return currentAccount ? `${HISTORY_KEY}::${shortHash(currentAccount)}` : HISTORY_KEY;
+}
 const PREFS_KEY = 'vf_prefs';
 const HISTORY_CAP = 20;
 
@@ -48,7 +75,7 @@ export function storageAvailable(): boolean {
 
 export function loadHistory(): Generation[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
+    const raw = localStorage.getItem(historyKey());
     return raw ? (JSON.parse(raw) as Generation[]) : [];
   } catch {
     return [];
@@ -64,6 +91,15 @@ export function saveHistory(items: Generation[]): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Remove the old shared history key, which every account could read. */
+export function purgeSharedHistory(): void {
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+  } catch {
+    /* storage blocked — nothing to purge */
   }
 }
 
