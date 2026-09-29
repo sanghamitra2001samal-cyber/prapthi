@@ -2059,6 +2059,18 @@ async def transcribe_audio(request: Request) -> JSONResponse:
     })
 
 
+
+# Engines with no Latin script in their vocabulary: an English word left in
+# Latin is unreadable to them, so it must be written in Devanagari first.
+# Parler and Chatterbox are multilingual and read English themselves.
+_DEVANAGARI_ONLY = ("hi_in-", "mms-hin", "svara-hi", "if5", "hf_", "hm_")
+
+
+def _needs_english_in_devanagari(voice_id: str) -> bool:
+    v = (voice_id or "").lower().replace("server:", "")
+    return v.startswith(_DEVANAGARI_ONLY)
+
+
 async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Response:
     ip = _client_ip(request)
     if demo:
@@ -2153,7 +2165,8 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         if (
             hinglish.is_hindi_voice(voice_id) or voice_id.startswith("if5")
         ) and voice_id not in SANSKRIT_VOICES:
-            text = hinglish.to_devanagari(text)
+            text = hinglish.to_devanagari(
+                text, speak_english=_needs_english_in_devanagari(voice_id))
 
     try:
         rate = float(body.get("rate", 1.0))

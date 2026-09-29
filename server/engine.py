@@ -600,7 +600,7 @@ class PiperEngine:
         # normalize_audio=False so _polish_wav owns headroom (Piper's own
         # normalize pushes the peak to full scale and clips).
         cfg = SynthesisConfig(
-            length_scale=1.0 / _clamp(rate, 0.5, 2.0),
+            length_scale=_pace(voice_id) / _clamp(rate, 0.5, 2.0),
             volume=_clamp(volume, 0.0, 1.0),
             normalize_audio=False,
         )
@@ -613,6 +613,27 @@ class PiperEngine:
         finally:
             if os.path.exists(wav_path):
                 os.unlink(wav_path)
+
+
+# Some Piper models speak noticeably slower than a native speaker would, which
+# reads as hesitant rather than calm. The correction is a baseline length_scale
+# per voice, so a user-supplied rate still scales from the voice's *natural*
+# pace rather than from the model's sluggish default.
+#
+# Measured on hi_IN with Whisper: word-error rate is unchanged from 1.00 down
+# to 0.84 (every difference sat inside the +/-10pt run-to-run spread), so 0.88
+# is well inside the safe range. Raising noise_w_scale was tried for the same
+# "robotic" complaint and made intelligibility *worse* - do not re-add it.
+_VOICE_PACE = {
+    "hi_in-priyamvada-medium": 0.88,   # 2.4-2.8 w/s -> ~3.0, matching svara
+    "hi_in-rohan-medium": 0.88,        # 2.3 w/s, the slowest we serve
+}
+
+
+def _pace(voice_id: str) -> float:
+    """Baseline length_scale for a voice; 1.0 leaves the model untouched."""
+    v = (voice_id or "").lower().replace("server:", "")
+    return _VOICE_PACE.get(v, 1.0)
 
 
 # --------------------------------------------------------------------------- #
