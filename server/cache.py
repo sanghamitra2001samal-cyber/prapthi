@@ -24,8 +24,18 @@ _EXT = {"audio/wav": "wav", "audio/mpeg": "mp3"}
 _MIME = {v: k for k, v in _EXT.items()}
 
 
+# Bump this whenever a change alters how audio SOUNDS for an unchanged request
+# — an engine parameter, a voice's pace, a cloning reference clip. The key does
+# not and cannot capture those, so without a bump every existing entry keeps
+# serving the old audio forever and the fix looks like it did nothing.
+#
+# 2 = Piper per-voice pace correction + corrected IndicF5 male reference.
+# 3 = mms-hin baseline pitch, so it stops crossing the male/female boundary.
+_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "3")
+
+
 def _key(voice_id: str, text: str, rate, pitch, volume, fmt: str) -> str:
-    raw = f"{voice_id}|{rate}|{pitch}|{volume}|{fmt}|{text}"
+    raw = f"{_VERSION}|{voice_id}|{rate}|{pitch}|{volume}|{fmt}|{text}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 

@@ -630,6 +630,27 @@ _VOICE_PACE = {
 }
 
 
+# A voice whose pitch range straddles the male/female boundary (~165 Hz) is
+# heard as *changing speaker* partway through a sentence, because successive
+# phrases land on opposite sides of it. mms-hin was the clearest case: widest
+# measured spread of any Hindi voice (13 st) centred at 164.7 Hz, so 5 of 13
+# half-second windows read female and 8 read male in a single utterance.
+#
+# Dropping its baseline pitch moves the whole contour to one side. Measured on
+# an 8.4s mixed Hindi/English passage: 1.00 -> 5/13 windows above the boundary
+# and 4 crossings; 0.85 -> 0/15 and none. 133 Hz median is an ordinary male
+# speaking pitch. As with the pace baseline, a caller-supplied pitch still
+# scales from here.
+_VOICE_PITCH = {
+    "mms-hin": 0.85,
+}
+
+
+def _pitch_base(voice_id: str) -> float:
+    v = (voice_id or "").lower().replace("server:", "")
+    return _VOICE_PITCH.get(v, 1.0)
+
+
 def _pace(voice_id: str) -> float:
     """Baseline length_scale for a voice; 1.0 leaves the model untouched."""
     v = (voice_id or "").lower().replace("server:", "")
@@ -835,7 +856,7 @@ class MMSEngine:
         text: str,
         voice_id: str,
         rate: float,
-        pitch: float,  # noqa: ARG002 — VITS has no live pitch control
+        pitch: float,  # VITS cannot steer pitch, so _finalize shifts it
         volume: float,  # noqa: ARG002 — applied by _polish_wav
         fmt: str,
     ) -> tuple[bytes, str]:
@@ -866,6 +887,7 @@ class MMSEngine:
             samples = wave_t.squeeze().cpu().numpy().astype(np.float32)
             sr = int(model.config.sampling_rate)
         pcm = np.clip(samples * 32768.0, -32768, 32767).astype(np.int16)
+        pitch = pitch * _pitch_base(voice_id)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
             wav_path = tf.name

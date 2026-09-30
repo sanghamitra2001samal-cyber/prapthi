@@ -166,7 +166,15 @@ def _pool_for(lang: str) -> dict[str, list[str]]:
 
 def _assign(voice_id: str, lang: str, gender: str) -> str:
     pool = _pool_for(lang)
-    names = pool.get((gender or "female").lower()) or pool["female"]
+    g = (gender or "").lower()
+    if g not in ("male", "female"):
+        # Never silently fall through to the female pool: an unlabelled voice
+        # used to be named Vaishali while sounding male. measured_gender()
+        # resolves these before we get here, so anything still unlabelled is a
+        # voice nobody has measured — split it by hash rather than by default.
+        g = "male" if int(hashlib.sha1(
+            (voice_id + ":g").encode()).hexdigest()[:8], 16) % 2 else "female"
+    names = pool.get(g) or pool["female"]
     # stable: the same voice id always lands on the same name
     h = int(hashlib.sha1(voice_id.encode()).hexdigest()[:8], 16)
     return names[h % len(names)]
@@ -217,3 +225,126 @@ def pretty_all(rows: list[tuple[str, str, str, str]]) -> dict[str, str]:
         used.add(name)
         out[vid] = name
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Measured speaker gender
+# --------------------------------------------------------------------------- #
+# 67 voices reach us declaring gender "neutral" — the upstream model cards
+# simply do not say. _assign() used to fall back to the female pool for those,
+# so 36 audibly male voices were presented under female names (mms-hin, at
+# 141.6 Hz, was sold as "Vaishali").
+#
+# There is no metadata to consult, so the gender here is MEASURED: each voice
+# speaks a sentence in its own language and Praat's pitch tracker reports the
+# median F0. Values below 165 Hz are male. The numbers are kept in the table so
+# the call is auditable and a borderline voice can be re-judged by ear without
+# re-running anything.
+#
+# Cross-checked two ways: a second independent estimator agreed on 49 of 55,
+# differing only within a few Hz of the boundary, and the results match the
+# upstream speaker names wherever those are gendered (thorsten, kareem, bui and
+# darkman male; salka, serena, kasandra and huayan female).
+#
+# Note ru_RU-dmitri-medium measures 186.8 Hz on both estimators despite its
+# name — the model really does produce a high voice, and what a customer hears
+# beats what the file is called.
+_MEASURED_F0 = {
+    "ar_JO-kareem-low": 109.1,
+    "ar_JO-kareem-medium": 99.7,
+    "ca_ES-upc_ona-medium": 178.9,
+    "ca_ES-upc_ona-x_low": 185.8,
+    "cs_CZ-jirka-medium": 156.1,
+    "cs_CZ-kasandra-medium": 217.0,
+    "da_DK-talesyntese-medium": 107.1,
+    "de_DE-mls-medium": 164.8,
+    "de_DE-thorsten-high": 138.8,
+    "el_GR-joy-medium": 178.9,
+    "el_GR-rapunzelina-medium": 211.5,
+    "es_ES-davefx-medium": 120.5,
+    "es_ES-sharvard-medium": 126.1,
+    "es_MX-ald-medium": 158.4,
+    "es_MX-claude-high": 188.5,
+    "fa_IR-amir-medium": 139.9,
+    "fa_IR-ganji-medium": 92.1,
+    "fi_FI-harri-low": 98.4,
+    "fi_FI-harri-medium": 93.7,
+    "fr_FR-mls-medium": 109.6,
+    "fr_FR-siwis-medium": 224.3,
+    "hu_HU-berta-medium": 174.3,
+    "is_IS-bui-medium": 119.6,
+    "is_IS-salka-medium": 228.4,
+    "it_IT-paola-medium": 210.2,
+    "it_IT-serena-high": 228.8,
+    "ka_GE-natia-medium": 217.5,
+    "kk_KZ-iseke-x_low": 108.5,
+    "kk_KZ-issai-high": 120.6,
+    "lb_LU-marylux-medium": 213.4,
+    "lv_LV-aivars-medium": 157.0,
+    "mms-asm": 188.1,
+    "mms-ben": 138.1,
+    "mms-guj": 121.3,
+    "mms-hin": 141.6,
+    "mms-kan": 152.9,
+    "mms-mai": 216.1,
+    "mms-mal": 117.2,
+    "mms-mar": 198.4,
+    "mms-ory": 148.4,
+    "mms-pan": 142.9,
+    "mms-tam": 177.3,
+    "mms-tel": 143.2,
+    "ne_NP-chitwan-medium": 145.3,
+    "ne_NP-google-medium": 234.4,
+    "nl_BE-nathalie-medium": 161.4,
+    "nl_BE-rdh-medium": 113.6,
+    "nl_NL-mls-medium": 128.9,
+    "pl_PL-bass-high": 73.6,
+    "pl_PL-darkman-medium": 109.1,
+    "pt_BR-cadu-medium": 145.3,
+    "pt_BR-faber-medium": 170.0,
+    "ro_RO-mihai-medium": 132.6,
+    "ru_RU-denis-medium": 144.3,
+    "ru_RU-dmitri-medium": 186.8,
+    "sk_SK-lili-medium": 197.1,
+    "sl_SI-artur-medium": 97.3,
+    "sr_RS-serbski_institut-medium": 103.4,
+    "sv_SE-alma-medium": 180.6,
+    "sv_SE-lisa-medium": 194.7,
+    "sw_CD-lanfrica-medium": 149.5,
+    "tr_TR-dfki-medium": 108.9,
+    "uk_UA-mykyta-high": 143.3,
+    "uk_UA-oleksa-high": 136.3,
+    "vi_VN-25hours_single-low": 232.9,
+    "vi_VN-vais1000-medium": 236.3,
+    "zh_CN-huayan-medium": 241.6,
+}
+
+# Above this, a voice is presented as female. Conventional male/female split.
+_F0_SPLIT = 165.0
+
+
+# Between roughly 150 and 180 Hz, pitch alone does not settle it. Where the
+# model is named after its speaker and that name is unambiguous, the name is
+# the better evidence — both of these sat in that band and the threshold had
+# them backwards (nathalie at 161.4 Hz read male, faber at 170.0 read female).
+_SPEAKER_NAME_GENDER = {
+    "nl_BE-nathalie-medium": "female",
+    "pt_BR-faber-medium": "male",
+}
+
+
+def measured_gender(voice_id: str, declared: str) -> str:
+    """The gender a listener would actually perceive.
+
+    Only consulted when the model declares nothing usable — a voice that states
+    its gender is believed.
+    """
+    if (declared or "").lower() in ("male", "female"):
+        return declared
+    named = _SPEAKER_NAME_GENDER.get(voice_id)
+    if named:
+        return named
+    f0 = _MEASURED_F0.get(voice_id)
+    if f0 is None:
+        return declared or "female"
+    return "male" if f0 < _F0_SPLIT else "female"

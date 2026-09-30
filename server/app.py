@@ -529,6 +529,12 @@ async def voices(request: Request) -> JSONResponse:
     _feats = entitlements.features(await db.get_account(user["email"]))
     # Customers see a person, not the engine behind it. One pass over the whole
     # catalogue so no two voices in a language can end up sharing a name.
+    # 67 of these voices declare no gender. Fill it in from measurement before
+    # naming, or an audibly male voice gets a female name (and the picker's
+    # gender filter puts it in the wrong group too).
+    for v in data:
+        v["gender"] = voice_names.measured_gender(
+            str(v["id"]), str(v.get("gender") or ""))
     _named = voice_names.pretty_all(
         [(str(v["id"]), str(v.get("name") or ""), str(v.get("lang") or "en"),
           str(v.get("gender") or "female")) for v in data])
