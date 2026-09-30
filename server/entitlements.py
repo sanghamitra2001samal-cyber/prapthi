@@ -142,7 +142,12 @@ def too_expensive_message(op: str, need: int, left: int) -> str:
 # caps come from the smaller of the two, with a 15% margin — a request that
 # cannot finish before its client gives up must never be accepted.
 _ENGINE_LIMITS = {
-    "if5": (1.58, 300.0),          # IndicF5 HD — slowest by far
+    # IndicF5 HD — still the slowest, but half what it was. 1.58 s/char was
+    # measured at f5_tts's default 32 flow-matching steps; the service now runs
+    # 16 (IF5_NFE, same WER and pitch for half the time), measured at 0.68.
+    # 0.75 leaves headroom for a busy box. NOTE: this cap is only honest while
+    # IF5_NFE stays at 16 — raise the rate back toward 1.58 if that changes.
+    "if5": (0.75, 300.0),
     "svara-": (0.26, 300.0),
     "chatterbox-": (0.165, 300.0),
     "parler-": (0.165, 300.0),
