@@ -1,0 +1,26 @@
+# Deliberately no [Install] section: acedemand.service owns the
+# lifecycle of this unit. It starts IndicF5 at boot and stops it for
+# the few minutes a song needs the card. Enabling this at boot as well
+# would race with that.
+[Unit]
+Description=Prapthi IndicF5 (near-human Indic TTS) on the GPU
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+# The security group restricts 8004 to the app box, so binding wide is fine.
+Environment=IF5_HOST=0.0.0.0
+Environment=IF5_PORT=8004
+Environment=IF5_DEVICE=cuda
+# 16 steps, matching the CPU service so the GPU path and the CPU fallback
+# sound the same. 32 measured no better: same WER, pitch within 0.3 Hz.
+Environment=IF5_NFE=16
+Environment=HF_HUB_OFFLINE=1
+Environment=TOKENIZERS_PARALLELISM=false
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ExecStart=/home/ubuntu/if5venv/bin/python /home/ubuntu/if5_service.py
+Restart=on-failure
+RestartSec=10

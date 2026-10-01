@@ -1275,17 +1275,44 @@ def if5_synth(
     Speaks `text` in the voice of the reference clip + its transcript."""
     import urllib.request
 
-    url = url or os.environ.get("IF5_URL", "http://127.0.0.1:8004")
-    body = {"text": text, "ref_audio_path": ref_audio_path, "ref_text": ref_text}
-    req = urllib.request.Request(
-        url + "/tts", data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            audio = r.read()
-    except Exception as e:
-        raise EngineError(f"IndicF5 synthesis failed: {e}") from e
+    local = url or os.environ.get("IF5_URL", "http://127.0.0.1:8004")
+    # (endpoint, reference path on that host, timeout)
+    attempts = [(local, ref_audio_path, 300)]
+
+    # The built-in voices all speak from the shared clips in if5_refs/, and
+    # those exist on the GPU box too, where this model runs roughly twenty
+    # times faster. A *cloned* voice's clip only exists on this box, so it has
+    # to stay on the local CPU service — the service takes a path, not audio.
+    #
+    # The GPU copy also disappears for a few minutes whenever a song is being
+    # made (the music engine borrows the card), so the local service stays the
+    # fallback rather than the error.
+    gpu = os.environ.get("IF5_GPU_URL", "")
+    if url is None and gpu and os.path.basename(
+            os.path.dirname(os.path.abspath(ref_audio_path))) == "if5_refs":
+        gpu_refs = os.environ.get("IF5_GPU_REFS", "/home/ubuntu/if5_refs")
+        attempts.insert(0, (gpu, os.path.join(
+            gpu_refs, os.path.basename(ref_audio_path)), 180))
+
+    audio = None
+    last: Exception | None = None
+    for endpoint, ref_path, timeout in attempts:
+        body = {"text": text, "ref_audio_path": ref_path, "ref_text": ref_text}
+        req = urllib.request.Request(
+            endpoint + "/tts", data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                audio = r.read()
+            break
+        except Exception as e:                      # noqa: BLE001 — try the next
+            last = e
+            if endpoint != attempts[-1][0]:
+                print(f"[voxforge] IndicF5 on {endpoint} failed ({e!r}); "
+                      f"falling back", flush=True)
+    if audio is None:
+        raise EngineError(f"IndicF5 synthesis failed: {last}") from last
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
         wav_path = tf.name
         tf.write(audio)

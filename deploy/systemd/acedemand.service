@@ -1,0 +1,15 @@
+[Unit]
+Description=Give the GPU to ACE-Step only while a song is being made
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Environment=GPUSWAP_IDLE=300
+ExecStart=/usr/bin/python3 /home/ubuntu/acedemand.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
