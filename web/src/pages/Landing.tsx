@@ -226,7 +226,7 @@ export default function Landing() {
             an unforgettable <span className="vf-gradient-text">voice.</span>
           </h1>
           <p className="mt-7 max-w-xl text-lg leading-relaxed text-white/75">
-            Prapthi Ai turns any text into stunningly human speech — 280+ voices
+            Prapthi Ai turns any text into stunningly human speech — 200+ voices
             across 50+ languages, rendered in seconds. Private, API-free, and
             powered by your own GPU.
           </p>
@@ -509,7 +509,7 @@ const ENGINE = [
    landing page promises exactly what the account delivers. */
 const SERVICES = [
   { icon: Mic, title: 'Text to Speech',
-    body: '280+ voices across 50+ languages, with 20 emotions from happy and sad to empathetic and urgent.' },
+    body: '200+ voices across 50+ languages, with 20 emotions from happy and sad to empathetic and urgent.' },
   { icon: UserPlus, title: 'Voice Cloning',
     body: 'Clone a voice from a short recording. Background noise is filtered out automatically.' },
   { icon: Bot, title: 'Voice Agent',
@@ -588,7 +588,7 @@ function Footer({ authed }: { authed: boolean }) {
               <span className="text-lg font-bold tracking-tight">Prapthi Ai</span>
             </Link>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">
-              Human-like AI voices — 280+ voices across 50+ languages, rendered in
+              Human-like AI voices — 200+ voices across 50+ languages, rendered in
               seconds. Private, API-free, and powered by your own GPU.
             </p>
             <form onSubmit={onSubmit} className="mt-6 flex max-w-sm items-center gap-2">

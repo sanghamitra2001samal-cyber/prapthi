@@ -40,14 +40,14 @@ const FEATURES: Record<string, string[]> = {
   ],
   mid: [
     '35,000 characters / month',
-    'All 280+ premium voices',
+    'Every premium voice',
     'Voice cloning (3 voices)',
     'WAV + MP3, commercial rights',
     'Priority rendering',
   ],
   elite: [
     '300,000 characters / month',
-    'All 280+ premium voices',
+    'Every premium voice',
     'Voice cloning (10 voices)',
     'WAV + MP3, commercial rights',
     'Priority rendering',
@@ -69,7 +69,7 @@ const FAQ: [string, string][] = [
   ['Can I self-host Prapthi.ai?',
     'Yes — Enterprise runs entirely on your own GPUs, so your scripts, voices and audio never touch a third-party API.'],
   ['Can I cancel anytime?',
-    'Absolutely. Cancel in one click from your dashboard and keep access until the end of your billing period.'],
+    'There is nothing to cancel. Paid plans do not renew automatically — a plan runs for 30 days and then your account simply returns to the free No Cap allowance. You are never charged again unless you choose to buy another plan, and you keep everything your plan includes until the end of the 30 days.'],
 ];
 
 declare global {
@@ -177,7 +177,7 @@ export default function Pricing() {
   const used = Math.min(account?.chars_used ?? 0, allowance);
   const left = Math.max(allowance - used, 0);
   const pct = allowance > 0 ? Math.min((used / allowance) * 100, 100) : 0;
-  const renews = account?.expires_at
+  const planEnds = account?.expires_at
     ? new Date(account.expires_at).toLocaleDateString('en-IN',
         { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
@@ -230,7 +230,7 @@ export default function Pricing() {
           </div>
           <p className="mt-2 text-xs text-[var(--color-muted)]">
             {inr(used)} of {inr(allowance)} characters used this month
-            {renews && ` · renews ${renews}`}
+            {planEnds && ` · plan ends ${planEnds}`}
           </p>
         </div>
       )}
