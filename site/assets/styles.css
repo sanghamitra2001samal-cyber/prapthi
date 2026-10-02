@@ -177,6 +177,8 @@ html[data-theme=dark] .auth-status[data-kind=ok]{color:#7ee2ab}
 .cert-viewer-close:hover,.cert-viewer-close:focus-visible{border-color:#165aff;color:#165aff}
 /* The stage holds the certificate's A4 proportions, so the panel opens at its final size instead of collapsing to nothing and then jumping when the scan lands. */
 .cert-viewer-stage{flex:0 1 auto;aspect-ratio:1406/1988;width:auto;height:min(calc(100vh - 170px),calc((min(900px,100vw - 48px) - 28px) * 1988 / 1406));max-width:100%;margin:0 auto;background:#fff;border-radius:6px;overflow:hidden}
-.cert-viewer-stage img{display:block;width:100%;height:100%;object-fit:contain}
+/* Shown, not handed over: no long-press save sheet on a phone, no drag to
+   the desktop, no selection. A screenshot is still a screenshot. */
+.cert-viewer-stage img{display:block;width:100%;height:100%;object-fit:contain;-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none;-webkit-user-select:none;pointer-events:none}
 .cert-viewer-foot{text-align:center;font-size:.82rem}
 @media (max-width:640px){.cert-viewer{padding:12px}.cert-viewer-panel{padding:10px}.cert-viewer-stage{height:min(calc(100vh - 150px),calc((100vw - 44px) * 1988 / 1406))}}
