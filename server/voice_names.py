@@ -92,8 +92,10 @@ _POOLS: dict[str, dict[str, list[str]]] = {
            "male":   ["Julian", "Nathan", "Elliot", "Miles", "Owen", "Felix"]},
 }
 # Indian English should sound Indian, not Western.
-_POOLS["en-IN"] = {"female": ["Anaya", "Rhea", "Tanvi", "Aditi"],
-                   "male":   ["Rohit", "Karan", "Vivek", "Nikhil"]}
+_POOLS["en-IN"] = {"female": ["Anaya", "Rhea", "Tanvi", "Aditi",
+                              "Ira", "Myra", "Saanvi", "Nitya"],
+                   "male":   ["Rohit", "Karan", "Vivek", "Nikhil",
+                              "Arnav", "Dhruv", "Ishan", "Veer"]}
 _POOLS.update({
     "ar": {"female": ["Layla", "Amira", "Salma", "Yasmin"],
            "male":   ["Kareem", "Omar", "Tariq", "Hassan"]},
