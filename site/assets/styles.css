@@ -165,10 +165,8 @@ html[data-theme=dark] .auth-status[data-kind=ok]{color:#7ee2ab}
    The certificate is shown rather than handed over as a file: browsers are
    increasingly set to download PDFs instead of rendering them, which turns
    "view the certificate" into a file in the downloads folder. */
-.cert-preview{display:block;width:100%;padding:0;border:1px solid var(--border);border-radius:10px;background:none;cursor:zoom-in;overflow:hidden;text-align:left;font:inherit;color:inherit}
-.cert-preview:hover,.cert-preview:focus-visible{border-color:#165aff}
-.cert-preview img{display:block;width:100%;height:auto}
-.cert-preview-cta{display:block;padding:9px 12px;border-top:1px solid var(--border);color:#165aff;font-size:.82rem;font-weight:600}
+.cert-open{display:inline-block;margin-top:13px;padding:0;border:0;background:none;color:#135aff;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.cert-open:hover,.cert-open:focus-visible{text-decoration:underline}
 .cert-viewer{display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;padding:24px}
 .cert-viewer.is-open{display:flex}
 .cert-viewer-backdrop{position:absolute;inset:0;background:rgba(6,12,24,.82)}
@@ -177,6 +175,8 @@ html[data-theme=dark] .auth-status[data-kind=ok]{color:#7ee2ab}
 .cert-viewer-bar figcaption{font-size:.82rem;line-height:1.35;color:var(--muted-foreground)}
 .cert-viewer-close{flex:none;width:34px;height:34px;border:1px solid var(--border);border-radius:50%;background:none;color:inherit;font-size:15px;line-height:1;cursor:pointer}
 .cert-viewer-close:hover,.cert-viewer-close:focus-visible{border-color:#165aff;color:#165aff}
-.cert-viewer-panel>img{display:block;width:auto;max-width:100%;min-height:0;max-height:calc(100vh - 170px);object-fit:contain;border-radius:6px;margin:0 auto}
+/* The stage holds the certificate's A4 proportions, so the panel opens at its final size instead of collapsing to nothing and then jumping when the scan lands. */
+.cert-viewer-stage{flex:0 1 auto;aspect-ratio:1406/1988;width:auto;height:min(calc(100vh - 170px),calc((min(900px,100vw - 48px) - 28px) * 1988 / 1406));max-width:100%;margin:0 auto;background:#fff;border-radius:6px;overflow:hidden}
+.cert-viewer-stage img{display:block;width:100%;height:100%;object-fit:contain}
 .cert-viewer-foot{text-align:center;font-size:.82rem}
-@media (max-width:640px){.cert-viewer{padding:12px}.cert-viewer-panel{padding:10px}.cert-viewer-panel>img{max-height:calc(100vh - 150px)}}
+@media (max-width:640px){.cert-viewer{padding:12px}.cert-viewer-panel{padding:10px}.cert-viewer-stage{height:min(calc(100vh - 150px),calc((100vw - 44px) * 1988 / 1406))}}
