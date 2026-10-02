@@ -31,31 +31,89 @@ _MIME = {v: k for k, v in _EXT.items()}
 #
 # 2 = Piper per-voice pace correction + corrected IndicF5 male reference.
 # 3 = mms-hin baseline pitch, so it stops crossing the male/female boundary.
-_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "3")
+_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "4")
 
 
-def _key(voice_id: str, text: str, rate, pitch, volume, fmt: str) -> str:
-    raw = f"{_VERSION}|{voice_id}|{rate}|{pitch}|{volume}|{fmt}|{text}"
+def _key(voice_id: str, text: str, rate, pitch, volume) -> str:
+    """One key per *render*, not per file format.
+
+    Most engines sample randomly, so asking twice gives two different takes.
+    The studio asks twice on purpose — once to play, once for the download —
+    and with the format in the key those were two separate renders, so the
+    file a customer downloaded was audibly not the one they had just heard.
+    Formats of one request now share a key and are converted from each other.
+    """
+    raw = f"{_VERSION}|{voice_id}|{rate}|{pitch}|{volume}|{text}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _transcode(data: bytes, src_ext: str, dst_ext: str) -> bytes | None:
+    """Convert one stored render into the other format. Never re-synthesises."""
+    import subprocess
+    import tempfile
+    src = dst = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix="." + src_ext, delete=False) as f:
+            f.write(data)
+            src = f.name
+        dst = src + "." + dst_ext
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", src]
+        if dst_ext == "mp3":
+            cmd += ["-codec:a", "libmp3lame", "-q:a", "2"]
+        cmd.append(dst)
+        r = subprocess.run(cmd, capture_output=True, timeout=180)
+        if r.returncode != 0 or not os.path.exists(dst):
+            return None
+        with open(dst, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+    finally:
+        for q in (src, dst):
+            if q and os.path.exists(q):
+                try:
+                    os.unlink(q)
+                except OSError:
+                    pass
 
 
 def get(voice_id, text, rate, pitch, volume, fmt) -> tuple[bytes, str] | None:
     if not _ENABLED:
         return None
-    k = _key(voice_id, text, rate, pitch, volume, fmt)
-    for ext, mime in _MIME.items():
-        p = _DIR / f"{k}.{ext}"
-        if p.exists():
-            try:
-                data = p.read_bytes()
-                os.utime(p, None)  # bump mtime for LRU
-                return data, mime
-            except OSError:
-                return None
+    k = _key(voice_id, text, rate, pitch, volume)
+    want = "wav" if fmt == "wav" else "mp3"
+    p = _DIR / f"{k}.{want}"
+    if p.exists():
+        try:
+            data = p.read_bytes()
+            os.utime(p, None)  # bump mtime for LRU
+            return data, _MIME[want]
+        except OSError:
+            return None
+    # The same render in the other format: convert it rather than generate a
+    # second, different take.
+    other = "mp3" if want == "wav" else "wav"
+    q = _DIR / f"{k}.{other}"
+    if q.exists():
+        try:
+            src = q.read_bytes()
+            os.utime(q, None)
+        except OSError:
+            return None
+        out = _transcode(src, other, want)
+        if out is None:
+            return None
+        try:
+            _DIR.mkdir(exist_ok=True)
+            p.write_bytes(out)
+            _evict()
+        except OSError:
+            pass  # serving it matters more than keeping it
+        return out, _MIME[want]
     return None
 
 
-def put(voice_id, text, rate, pitch, volume, fmt, audio: bytes, mime: str) -> None:
+def put(voice_id, text, rate, pitch, volume, audio: bytes, mime: str) -> None:
     if not _ENABLED:
         return
     ext = _EXT.get(mime)
@@ -63,7 +121,7 @@ def put(voice_id, text, rate, pitch, volume, fmt, audio: bytes, mime: str) -> No
         return
     try:
         _DIR.mkdir(exist_ok=True)
-        k = _key(voice_id, text, rate, pitch, volume, fmt)
+        k = _key(voice_id, text, rate, pitch, volume)
         (_DIR / f"{k}.{ext}").write_bytes(audio)
         _evict()
     except OSError:

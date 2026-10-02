@@ -2122,6 +2122,9 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                 status_code=402,
             )
 
+    # Voice previews are free, and the preview branch below never sets a
+    # billable length; 0 means "do not charge".
+    _billable = 0
     if preview:
         if if5clone:
             lang, name = "hi", if5clone["name"]
@@ -2152,18 +2155,12 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                  "code": "text_too_long_for_voice"},
                 status_code=413,
             )
-        # Signed-in synthesis is charged against the monthly character
-        # allowance. The demo endpoint is free (already capped + rate limited).
-        if not demo and _user and not _user.get("is_admin"):
-            await db.reset_period_if_due(_user["email"])
-            ok, remaining = await db.consume_chars(_user["email"], len(text))
-            if not ok:
-                return JSONResponse(
-                    {"error": "You have used your monthly characters. "
-                              "Upgrade your plan to carry on.",
-                     "code": "quota_exceeded"},
-                    status_code=402,
-                )
+        # What this request will cost, charged further down once we know the
+        # audio is actually going to be generated. Charging here billed for a
+        # cache hit, billed twice for the studio's play-then-download pair, and
+        # billed a third time for a WAV attempt that was refused a few lines
+        # later. Measured on the submitted text, before conversion rewrites it.
+        _billable = len(text)
         text = normalize_speech_text(text)
         # Hinglish: for Hindi voices, convert common romanized Hindi words to
         # Devanagari so they're pronounced natively (QA #3/#4, best-effort).
@@ -2328,7 +2325,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                 return shaped, "audio/wav"
             return await run_in_threadpool(_wav_to_mp3, shaped)
 
-    async def _render_scenario(runs_):
+    async def _render_scenario(runs_, fmt_: str = "wav"):
         """auto mode: each run in its own feeling, joined with short pauses."""
         import io as _io
         import numpy as _np
@@ -2350,17 +2347,33 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
             pieces.append(y)
         buf = _io.BytesIO()
         _sf.write(buf, _np.concatenate(pieces), sr, format="WAV", subtype="PCM_16")
-        if fmt == "wav":
+        if fmt_ == "wav":
             return buf.getvalue(), "audio/wav"
         return await run_in_threadpool(_wav_to_mp3, buf.getvalue())
 
-    args = (cache_vid, text, rate, pitch, volume, fmt)
+    args = (cache_vid, text, rate, pitch, volume)
 
     # Fast path: serve an identical past result instantly (huge win for Parler).
-    hit = cache.get(*args)
+    # The key no longer carries the format, so asking for the same audio as mp3
+    # and as wav returns one render in two containers instead of two different
+    # takes.
+    hit = cache.get(*args, fmt)
     if hit:
         audio, mime = hit
         return Response(audio, media_type=mime, headers=_audio_headers("HIT"))
+
+    # Nothing was cached, so this is about to cost real compute — which is the
+    # point at which it costs the customer characters.
+    if _billable and not demo and _user and not _user.get("is_admin"):
+        await db.reset_period_if_due(_user["email"])
+        ok, _left = await db.consume_chars(_user["email"], _billable)
+        if not ok:
+            return JSONResponse(
+                {"error": "You have used your monthly characters. "
+                          "Upgrade your plan to carry on.",
+                 "code": "quota_exceeded"},
+                status_code=402,
+            )
 
     # Slow path: synthesize. Reject when the queue is already full so a flood of
     # slow requests can't pile up unbounded.
@@ -2375,18 +2388,20 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         # Re-check the cache inside the lock in case a concurrent request just
         # produced the same audio.
         async with _synth_lock:
-            hit = cache.get(*args)
+            hit = cache.get(*args, fmt)
             if hit:
                 audio, mime = hit
                 return Response(
                     audio, media_type=mime, headers=_audio_headers("HIT")
                 )
             try:
+                # Always render WAV and derive mp3 from it, so the download is
+                # the same take as the playback and a paid WAV stays lossless.
                 if len(runs) > 1:
-                    audio, mime = await _render_scenario(runs)
+                    master, mmime = await _render_scenario(runs, "wav")
                 else:
-                    audio, mime = await _render(
-                        text, emotion, eng_rate, eng_pitch, eng_volume, fmt)
+                    master, mmime = await _render(
+                        text, emotion, eng_rate, eng_pitch, eng_volume, "wav")
             except EngineError as e:
                 return JSONResponse({"error": str(e)}, status_code=500)
             except Exception as e:  # pragma: no cover - defensive
@@ -2397,7 +2412,12 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                     {"error": "synthesis failed, please try again"},
                     status_code=500,
                 )
-            cache.put(*args, audio, mime)
+            cache.put(*args, master, mmime)
+            if fmt == "wav":
+                audio, mime = master, mmime
+            else:
+                audio, mime = await run_in_threadpool(_wav_to_mp3, master)
+                cache.put(*args, audio, mime)
     finally:
         _synth_waiting -= 1
 
