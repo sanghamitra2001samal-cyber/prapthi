@@ -157,3 +157,7 @@ html[data-theme=dark] .auth-status[data-kind=ok]{color:#7ee2ab}
     box-shadow:none;
   }
 }
+/* Certificate facts on /certifications — stacked so a long issuing-body name
+   wraps cleanly instead of colliding with the next label. */
+.cert-meta{display:flex;flex-direction:column;gap:5px;margin:16px 0 14px;color:var(--muted-foreground);font-size:.85rem;line-height:1.5}
+.cert-meta strong{font-weight:600}
