@@ -161,3 +161,22 @@ html[data-theme=dark] .auth-status[data-kind=ok]{color:#7ee2ab}
    wraps cleanly instead of colliding with the next label. */
 .cert-meta{display:flex;flex-direction:column;gap:5px;margin:16px 0 14px;color:var(--muted-foreground);font-size:.85rem;line-height:1.5}
 .cert-meta strong{font-weight:600}
+/* Certificate previews and the in-page viewer on /certifications.
+   The certificate is shown rather than handed over as a file: browsers are
+   increasingly set to download PDFs instead of rendering them, which turns
+   "view the certificate" into a file in the downloads folder. */
+.cert-preview{display:block;width:100%;padding:0;border:1px solid var(--border);border-radius:10px;background:none;cursor:zoom-in;overflow:hidden;text-align:left;font:inherit;color:inherit}
+.cert-preview:hover,.cert-preview:focus-visible{border-color:#165aff}
+.cert-preview img{display:block;width:100%;height:auto}
+.cert-preview-cta{display:block;padding:9px 12px;border-top:1px solid var(--border);color:#165aff;font-size:.82rem;font-weight:600}
+.cert-viewer{display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center;padding:24px}
+.cert-viewer.is-open{display:flex}
+.cert-viewer-backdrop{position:absolute;inset:0;background:rgba(6,12,24,.82)}
+.cert-viewer-panel{position:relative;display:flex;flex-direction:column;gap:10px;max-width:min(900px,100%);max-height:100%;margin:0;padding:14px;border-radius:12px;background:var(--card);box-shadow:0 24px 60px rgba(0,0,0,.4)}
+.cert-viewer-bar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.cert-viewer-bar figcaption{font-size:.82rem;line-height:1.35;color:var(--muted-foreground)}
+.cert-viewer-close{flex:none;width:34px;height:34px;border:1px solid var(--border);border-radius:50%;background:none;color:inherit;font-size:15px;line-height:1;cursor:pointer}
+.cert-viewer-close:hover,.cert-viewer-close:focus-visible{border-color:#165aff;color:#165aff}
+.cert-viewer-panel>img{display:block;width:auto;max-width:100%;min-height:0;max-height:calc(100vh - 170px);object-fit:contain;border-radius:6px;margin:0 auto}
+.cert-viewer-foot{text-align:center;font-size:.82rem}
+@media (max-width:640px){.cert-viewer{padding:12px}.cert-viewer-panel{padding:10px}.cert-viewer-panel>img{max-height:calc(100vh - 150px)}}
