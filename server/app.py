@@ -433,6 +433,18 @@ IF5_VOICES = {
     # Clear, well-pronounced Sanskrit *speech* (not chanting). Auto-hidden until
     # a Sanskrit reference clip (if5_refs/sanskrit.wav + .txt) is present.
     "if5-sanskrit": ("Aryan · Sanskrit (IndicF5 HD)", "sa-IN", "male", "sanskrit"),
+    # IndicF5 is zero-shot across 11 Indian languages; all it needs is a
+    # reference clip and that clip's transcript. We had only Hindi and Sanskrit
+    # clips, which is the only reason these three languages were missing.
+    # Each clip is built the same way the Hindi ones were — a svara voice
+    # reading a known sentence, so the transcript is exact by construction —
+    # and each was checked to be in the right register before being installed.
+    "if5-gu-f": ("Khushi · Gujarati (IndicF5 HD)", "gu-IN", "female", "gu_female"),
+    "if5-gu-m": ("Harsh · Gujarati (IndicF5 HD)", "gu-IN", "male", "gu_male"),
+    "if5-mr-f": ("Sayali · Marathi (IndicF5 HD)", "mr-IN", "female", "mr_female"),
+    "if5-mr-m": ("Aniket · Marathi (IndicF5 HD)", "mr-IN", "male", "mr_male"),
+    "if5-te-f": ("Keerthi · Telugu (IndicF5 HD)", "te-IN", "female", "te_female"),
+    "if5-te-m": ("Sharath · Telugu (IndicF5 HD)", "te-IN", "male", "te_male"),
 }
 
 # Vāgdhenu — Sanskrit *chant* (pārāyaṇa) voice, served by the :8005 microservice.
