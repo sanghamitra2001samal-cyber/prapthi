@@ -1410,18 +1410,6 @@ class SvaraEngine:
         "svara-ne-f": ("Nepali", "ne-NP", "female", "ne_female"),
         "svara-en-f": ("English (Indian)", "en-IN", "female", "en_female"),
         "svara-en-m": ("English (Indian)", "en-IN", "male", "en_male"),
-        # The service offers 88 speakers; most are Indic-language voices that
-        # produce nonsense from English text. These are the ones that actually
-        # speak it, measured with Whisper on the same English passage —
-        # word-error rate in the comment. Everything above ~25% was left out.
-        "svara-en-f2": ("English (Indian)", "en-IN", "female", "anika"),       # 0%
-        "svara-en-f3": ("English (Indian)", "en-IN", "female", "priya"),       # 0%
-        "svara-en-f4": ("English (Indian)", "en-IN", "female", "mumtaz"),      # 5%
-        "svara-en-f5": ("English (Indian)", "en-IN", "female", "vidya"),       # 5%
-        "svara-en-f6": ("English (Indian)", "en-IN", "female", "maheshwari"),  # 11%
-        "svara-en-f7": ("English (Indian)", "en-IN", "female", "tanya"),       # 11%
-        "svara-en-m2": ("English (Indian)", "en-IN", "male", "vasanth"),       # 5%
-        "svara-en-m3": ("English (Indian)", "en-IN", "male", "siddharth"),     # 5%
     }
 
     # our emotion vocabulary -> svara sentence-end tag ("" = no tag / neutral)
