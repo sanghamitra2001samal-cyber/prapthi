@@ -2182,6 +2182,10 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         ) and voice_id not in SANSKRIT_VOICES:
             text = hinglish.to_devanagari(
                 text, speak_english=_needs_english_in_devanagari(voice_id))
+        elif hinglish.is_bengali_voice(voice_id):
+            # Same reason as above, different script. None of the Bengali
+            # engines can read Latin: MMS deletes it, svara can derail.
+            text = hinglish.to_bengali(text, speak_english=True)
 
     try:
         rate = float(body.get("rate", 1.0))

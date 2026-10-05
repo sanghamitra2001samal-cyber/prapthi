@@ -267,3 +267,68 @@ def to_devanagari(text: str, speak_english: bool = False) -> str:
         return tok
 
     return "".join(repl(t) for t in _TOKEN.findall(text))
+
+
+# --------------------------------------------------------------------------- #
+# Bengali
+# --------------------------------------------------------------------------- #
+# A Latin word left inside Bengali text does real damage: MMS drops it silently
+# (its tokenizer discards anything outside its own script, so "office" simply
+# vanishes), and svara sometimes derails into another language entirely — one
+# measured run of a Bengali sentence containing "office" and "Thank you" came
+# back as Sinhala gibberish. Converting the word to Bengali script first avoids
+# all of that, exactly as it does for Hindi.
+#
+# Devanagari and Bengali are the same Brahmic structure and Unicode lays the two
+# blocks out in the same order, so the transliteration above is reused wholesale
+# and its output mapped across. Of the 57 characters it can emit, 54 differ only
+# by the 0x80 between the blocks. These are the three that do not:
+_DEV_TO_BENGALI = {
+    "\u0911": "\u0985",   # candra O -> অ, Bengali has none (ऑफ़िस -> অফিস)
+    "\u0935": "\u09ad",   # va -> ভ: Bengali has no va, and ব would read as b
+    "\u0949": "",          # candra O sign has no equivalent (कॉल -> কল)
+    "\u093c": "",          # nukta: Bengali writes these loanwords without it
+}
+
+
+# Only letters and vowel signs shift between the blocks. Punctuation does not:
+# the danda U+0964 is shared by both scripts, and +0x80 would silently turn it
+# into a Bengali currency numerator.
+_DEV_LETTERS = frozenset(
+    "\u0901\u0902\u0905\u0906\u0907\u0908\u0909\u090a\u090f\u0910\u0913\u0914"
+    "\u0915\u0916\u0917\u0918\u0919\u091a\u091b\u091c\u091d\u091e"
+    "\u091f\u0920\u0921\u0922\u0923\u0924\u0925\u0926\u0927\u0928"
+    "\u092a\u092b\u092c\u092d\u092e\u092f\u0930\u0932\u0936\u0937\u0938\u0939"
+    "\u093e\u093f\u0940\u0941\u0942\u0943\u0947\u0948\u094b\u094c\u094d"
+)
+
+
+def _dev_to_bengali(s: str) -> str:
+    out = []
+    for ch in s:
+        if ch in _DEV_TO_BENGALI:
+            out.append(_DEV_TO_BENGALI[ch])
+        elif ch in _DEV_LETTERS:
+            out.append(chr(ord(ch) + 0x80))
+        else:
+            out.append(ch)   # Bengali, punctuation and spacing pass through
+    return "".join(out)
+
+
+# Every Bengali voice we serve. Missing one means that voice still receives
+# raw Latin text.
+_BENGALI_VOICE = re.compile(r"^(mms-ben|svara-bn|parler-bn|if5-bn|bn_)")
+
+
+def is_bengali_voice(voice_id: str) -> bool:
+    v = (voice_id or "").lower().replace("server:", "")
+    return bool(_BENGALI_VOICE.match(v))
+
+
+def to_bengali(text: str, speak_english: bool = False) -> str:
+    """Bengali text with any Latin words rewritten in Bengali script.
+
+    Bengali already in the text is left exactly as it is: the converter only
+    rewrites runs of Latin letters.
+    """
+    return _dev_to_bengali(to_devanagari(text, speak_english))
