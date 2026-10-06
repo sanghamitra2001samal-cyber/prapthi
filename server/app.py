@@ -479,6 +479,21 @@ IF5_VOICES = {
     "if5-hi-aman": ("Girish · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_aman"),
     "if5-bn-arjun": ("Subir · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_arjun"),
     "if5-bn-riya": ("Piyali · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_riya"),
+    # IndicF5 takes its language from the text and only its timbre from the
+    # reference, so a Hindi clip can voice Bengali — verified, with Whisper
+    # reporting Bengali back. That doubles what each reference is worth.
+    #
+    # It also pulls every male toward 135-142 Hz whatever it is given: the
+    # rohan clip is 153 Hz and renders at 135, and aman is 93 Hz and renders
+    # at 92. So a Hindi tenor cannot be had by picking a higher reference,
+    # and the three below sit within 5% of voices that already exist. They
+    # are different speakers with different formants, which is audible even
+    # at one pitch, but that is for an ear to judge, not this comment.
+    "if5-hi-rohan": ("Nikhil · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_rohan"),
+    "if5-hi-m2": ("Kabir · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_m2"),
+    "if5-bn-rohan": ("Nilay · Bengali (IndicF5 HD)", "bn-IN", "male", "hi_rohan"),
+    # This one genuinely fills a hole: 91 Hz, 14% below any Bengali male.
+    "if5-bn-aman": ("Debashish · Bengali (IndicF5 HD)", "bn-IN", "male", "hi_aman"),
 }
 
 # Vāgdhenu — Sanskrit *chant* (pārāyaṇa) voice, served by the :8005 microservice.
