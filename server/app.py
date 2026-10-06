@@ -445,6 +445,10 @@ IF5_VOICES = {
     "if5-mr-m": ("Aniket · Marathi (IndicF5 HD)", "mr-IN", "male", "mr_male"),
     "if5-te-f": ("Keerthi · Telugu (IndicF5 HD)", "te-IN", "female", "te_female"),
     "if5-te-m": ("Sharath · Telugu (IndicF5 HD)", "te-IN", "male", "te_male"),
+    # Bengali had only MMS (16 kHz) and svara. IndicF5 is the clearest engine
+    # we run and covers Bengali, so it was missing for want of two files.
+    "if5-bn-f": ("Rupa · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_female"),
+    "if5-bn-m": ("Partho · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_male"),
 }
 
 # Vāgdhenu — Sanskrit *chant* (pārāyaṇa) voice, served by the :8005 microservice.
@@ -2081,6 +2085,9 @@ async def transcribe_audio(request: Request) -> JSONResponse:
 # Engines with no Latin script in their vocabulary: an English word left in
 # Latin is unreadable to them, so it must be written in Devanagari first.
 # Parler and Chatterbox are multilingual and read English themselves.
+# Measured: 5.3 syllables/sec x 1.12 lands at ~5.9, inside the natural range.
+_BENGALI_PACE = 1.12
+
 _DEVANAGARI_ONLY = ("hi_in-", "mms-hin", "svara-hi", "if5", "hf_", "hm_")
 
 
@@ -2245,6 +2252,19 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     if emotion == "auto":
         emotion = runs[0][1] if len(runs) == 1 else ("neutral" if not runs else emotion)
     eng_rate, eng_pitch, eng_volume = _prosody(emotion if emotion != "auto" else "neutral")
+
+    # Bengali reads slower than everything else we serve, and it is not one bad
+    # model: measured on sentences of matched length, every Bengali engine lands
+    # at 5.25-5.54 syllables per second against 5.95-6.96 for Hindi. Natural
+    # Indic speech sits around 5.5-7, so Bengali is at the bottom of the range
+    # and reads as hesitant. This lifts it to about 6, still under Hindi.
+    # Applied to IndicF5 only, which is where it was measured: 5.35 -> 5.88 and
+    # 5.54 -> 6.07 syllables/sec. svara ignores speed entirely, and MMS scales
+    # it quite differently — the same 1.12 took MMS from 5.25 to 7.28, faster
+    # than any Hindi voice and plainly rushed. Do not widen this without
+    # measuring the engine you are widening it to.
+    if voice_id.startswith("if5-bn"):
+        eng_rate = min(eng_rate * _BENGALI_PACE, 1.6)
 
     # Vāgdhenu renders per-meter, so the meter is part of the cache identity.
     if voice_id == "vagdhenu-sa-chant":
