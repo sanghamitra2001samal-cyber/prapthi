@@ -467,6 +467,18 @@ IF5_VOICES = {
     "if5-bn-rashmi": ("Shreya · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_rashmi"),
     "if5-bn-tapan": ("Tapas · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_tapan"),
     "if5-bn-arnav": ("Anirban · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_arnav"),
+    # The rest of the Parler speakers for these two languages. Three were
+    # left out: priya2 (142 Hz) and meera2 (158 Hz) carry female names in a
+    # register that will not carry them, and raghav2 sits 0.5% from Manav,
+    # which is the same voice twice rather than another one.
+    "if5-hi-anjali": ("Ishita · Hindi (IndicF5 HD)", "hi-IN", "female", "hi_anjali"),
+    "if5-hi-sneha": ("Naina · Hindi (IndicF5 HD)", "hi-IN", "female", "hi_sneha"),
+    "if5-hi-arjun": ("Samar · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_arjun"),
+    "if5-hi-rohit": ("Yuvan · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_rohit"),
+    "if5-hi-vikram": ("Aarush · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_vikram"),
+    "if5-hi-aman": ("Girish · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_aman"),
+    "if5-bn-arjun": ("Subir · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_arjun"),
+    "if5-bn-riya": ("Piyali · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_riya"),
 }
 
 # Vāgdhenu — Sanskrit *chant* (pārāyaṇa) voice, served by the :8005 microservice.
