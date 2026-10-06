@@ -449,6 +449,24 @@ IF5_VOICES = {
     # we run and covers Bengali, so it was missing for want of two files.
     "if5-bn-f": ("Rupa · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_female"),
     "if5-bn-m": ("Partho · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_male"),
+    # More voices for the two languages that get the most use. Each is a
+    # distinct speaker: IndicF5 is zero-shot, so a new reference clip is a
+    # new voice. The clips come from the Parler speakers, whose identities
+    # were otherwise going to waste — curation hides Parler wherever a
+    # faster engine covers the language, because Parler takes 23-46s per
+    # clip. As a reference clip that cost is paid once, and the voice then
+    # renders in about two seconds.
+    # Pitches are spread on purpose so these are audibly different people,
+    # not one voice six times: 199, 169, 131, 105 Hz for Hindi and
+    # 272, 239, 137, 126 Hz for Bengali.
+    "if5-hi-rani": ("Meher · Hindi (IndicF5 HD)", "hi-IN", "female", "hi_rani"),
+    "if5-hi-divya": ("Sonal · Hindi (IndicF5 HD)", "hi-IN", "female", "hi_divya"),
+    "if5-hi-manoj": ("Manav · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_manoj"),
+    "if5-hi-dev": ("Vikrant · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_dev"),
+    "if5-bn-aditi": ("Mitali · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_aditi"),
+    "if5-bn-rashmi": ("Shreya · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_rashmi"),
+    "if5-bn-tapan": ("Tapas · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_tapan"),
+    "if5-bn-arnav": ("Anirban · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_arnav"),
 }
 
 # Vāgdhenu — Sanskrit *chant* (pārāyaṇa) voice, served by the :8005 microservice.
