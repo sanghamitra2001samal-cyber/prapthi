@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
   HelpCircle,
   Info,
+  CreditCard,
   LogOut,
   Menu,
   X,
@@ -323,6 +324,7 @@ function Dock({
             <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} aria-hidden />
             <div className="absolute bottom-0 left-full z-50 ml-3 w-52 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-2xl">
               <div className="truncate px-3 py-2 text-xs text-[var(--color-muted)]" title={user ?? ''}>{user ?? 'Signed in'}</div>
+              <MenuRow icon={CreditCard} label="Plan & pricing" onClick={() => { setMenu(false); navigate('/pricing'); }} />
               <MenuRow icon={HelpCircle} label="Help" onClick={() => { setMenu(false); navigate('/help'); }} />
               <MenuRow icon={Info} label="About" onClick={() => { setMenu(false); navigate('/about'); }} />
               <div className="my-1 h-px bg-[var(--color-border)]" />
@@ -394,6 +396,7 @@ function MobileMenu({
           <button onClick={() => openOverlay('voices')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"><AudioLines size={18} /> Voices</button>
           <button onClick={() => openOverlay('settings')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"><SlidersHorizontal size={18} /> Settings</button>
           <button onClick={() => openOverlay('history')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"><History size={18} /> History</button>
+          <button onClick={() => { onClose(); navigate('/pricing'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"><CreditCard size={18} /> Plan &amp; pricing</button>
           <button onClick={() => { onClose(); navigate('/help'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"><HelpCircle size={18} /> Help</button>
         </nav>
         <button onClick={async () => { onClose(); await logout(); }} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-error)]/10 hover:text-[var(--color-error)]">

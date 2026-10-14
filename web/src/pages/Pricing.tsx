@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, Check, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Check, Loader2, Sparkles } from 'lucide-react';
 import { useStore } from '../state/store';
 
 /* ------------------------------------------------------------------ */
@@ -184,6 +184,17 @@ export default function Pricing() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-14 md:px-8">
+      {/* Reached from inside the studio, so there has to be a way back
+          that is not the browser's back button. */}
+      {user && (
+        <Link
+          to="/dashboard"
+          className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-muted)] transition-colors hover:text-[var(--color-accent)]"
+        >
+          <ArrowLeft size={15} /> Back to studio
+        </Link>
+      )}
+
       {/* ---------------------------------------------------------- head */}
       <div className="text-center">
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-accent)]">
