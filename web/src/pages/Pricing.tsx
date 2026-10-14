@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Check, Loader2, Sparkles } from 'lucide-react';
 import { useStore } from '../state/store';
@@ -90,6 +90,7 @@ function loadCheckout(): Promise<boolean> {
 
 export default function Pricing() {
   const user = useStore((s) => s.user);
+  const authStatus = useStore((s) => s.authStatus);
   const toast = useStore((s) => s.toast);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [account, setAccount] = useState<Account | null>(null);
@@ -171,6 +172,34 @@ export default function Pricing() {
       setBusy(null);
     }
   };
+
+  /* The site's plan buttons link here with ?plan=mid — somebody who has
+     already chosen a plan must not be asked to choose it a second time, so
+     checkout opens straight away. Signed out, we send them to sign in and
+     come back to the same intent. */
+  const wanted = new URLSearchParams(window.location.search).get('plan');
+  const acted = useRef(false);
+
+  useEffect(() => {
+    if (!wanted || acted.current || authStatus === 'loading') return;
+
+    if (authStatus === 'out') {
+      acted.current = true;
+      const back = `${import.meta.env.BASE_URL}pricing?plan=${encodeURIComponent(wanted)}`;
+      window.location.replace(`/login?next=${encodeURIComponent(back)}`);
+      return;
+    }
+
+    if (!plans.length) return;            // the plan list is still loading
+    acted.current = true;
+    // Drop the parameter so a refresh does not re-open checkout.
+    window.history.replaceState(null, '', window.location.pathname);
+    const cur = (account?.plan ?? 'free').toLowerCase();
+    const p = plans.find((x) => x.id === wanted);
+    // Unknown plan, the free one, the plan they are already on, or an owner
+    // account: no checkout to open, so just show the page.
+    if (p && p.price > 0 && p.id !== cur && cur !== 'owner') void buy(p);
+  }, [wanted, authStatus, plans, account]);
 
   const current = (account?.plan ?? 'free').toLowerCase();
   const allowance = account?.chars_allowance ?? 0;

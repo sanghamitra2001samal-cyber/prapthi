@@ -14,10 +14,24 @@
 (() => {
   const BASE = window.PRAPTHI_API_BASE || (location.hostname.endsWith('prapthi.ai') ? '/api' : 'https://api.prapthi.ai/api');
   const STUDIO = '/app/dashboard';  // skip the studio's own landing page
+  /* A page may ask to be returned to after signing in — the pricing page
+     sends people here in the middle of buying a plan. Only our own studio
+     paths are honoured, so ?next= can never become an open redirect. */
+  const DEST = (() => {
+    const n = new URLSearchParams(location.search).get('next') || '';
+    return /^\/app\/[\w\-./?=&%]*$/.test(n) && !n.startsWith('/app//')
+      && !n.includes('..') ? n : STUDIO;
+  })();
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const forms = $$('[data-auth-step]');
   if (!forms.length) return;
+  /* Hopping between sign-in and sign-up must not lose where they were
+     headed, or they land in the studio with the plan forgotten. */
+  if (DEST !== STUDIO) {
+    const q = '?next=' + encodeURIComponent(DEST);
+    $$('a[href="/login"], a[href="/signup"]').forEach(a => { a.href = a.getAttribute('href') + q; });
+  }
 
   const show = step => forms.forEach(f => { f.hidden = f.dataset.authStep !== step; });
   const say = (form, message, kind = 'info') => {
@@ -65,7 +79,7 @@
     try {
       await call('/auth/login', { email, password });
       say(loginForm, 'Signed in. Taking you to the studio…', 'ok');
-      location.assign(STUDIO);
+      location.assign(DEST);
     } catch (err) {
       busy(loginForm, false);
       if (err.status === 403 || err.code === 'unverified') {
@@ -173,6 +187,6 @@
   // already signed in? skip the form
   fetch(BASE + '/auth/me', { credentials: 'include' })
     .then(r => (r.ok ? r.json() : null))
-    .then(u => { if (u && (u.user || u.email)) location.replace(STUDIO); })
+    .then(u => { if (u && (u.user || u.email)) location.replace(DEST); })
     .catch(() => {});
 })();
