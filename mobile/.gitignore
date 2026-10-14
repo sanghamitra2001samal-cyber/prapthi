@@ -1,0 +1,23 @@
+node_modules/
+
+# Signing material: never commit. See scripts/create-upload-key.sh
+*.jks
+*.keystore
+android/keystore.properties
+
+# Machine-specific and generated
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+ios/App/build/
+ios/App/DerivedData/
+ios/App/Pods/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Build outputs copied here for hand-testing
+store/*.apk
+store/*.aab

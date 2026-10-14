@@ -1,0 +1,28 @@
+{
+  "appId": "ai.prapthi.app",
+  "appName": "Prapthi AI",
+  "webDir": "www",
+  "appendUserAgent": "PrapthiApp/1.0",
+  "backgroundColor": "#ffffff",
+  "server": {
+    "url": "https://prapthi.ai/app/",
+    "errorPath": "offline.html",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "style": "DEFAULT"
+    },
+    "App": {
+      "disableBackButtonHandler": true
+    }
+  }
+}
