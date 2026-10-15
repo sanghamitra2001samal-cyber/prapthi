@@ -54,13 +54,20 @@ function AuthRoute({ view }: { view: 'login' | 'signup' }) {
   return <AuthScreen initialView={view} />;
 }
 
-/** The app's own landing page: signed in -> straight to work, otherwise the
- *  site's sign-in page. It is never rendered on the live site. */
+/* The Android/iOS app opens here (/app/) and identifies itself with
+   "PrapthiApp" in its user agent (mobile/capacitor.config.json). */
+const IN_APP = typeof navigator !== 'undefined' && /PrapthiApp\//.test(navigator.userAgent);
+
+/** The app's own landing page: signed in -> straight to work. Signed out, a
+ *  browser goes to the site's sign-in page; the phone app goes to the site's
+ *  home page instead, so a first-time user meets the product before a login
+ *  form. It is never rendered on the live site. */
 function HomeRoute() {
   const authStatus = useStore((s) => s.authStatus);
   if (authStatus === 'loading') return <Spinner />;
   if (authStatus === 'in') return <Navigate to="/dashboard" replace />;
-  return UNDER_SITE ? <SiteRedirect to="/login" /> : <Landing />;
+  if (!UNDER_SITE) return <Landing />;
+  return <SiteRedirect to={IN_APP ? '/' : '/login'} />;
 }
 
 export default function App() {
