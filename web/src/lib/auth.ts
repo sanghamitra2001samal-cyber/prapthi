@@ -79,3 +79,12 @@ export async function logout(): Promise<void> {
     /* ignore */
   }
 }
+
+/** Permanently delete the signed-in account. Needs the password again. */
+export async function deleteAccount(password: string): Promise<AuthResult> {
+  try {
+    return await parse(await post('/auth/delete-account', { password }));
+  } catch {
+    return { ok: false, error: 'Network error. Check your connection and try again.' };
+  }
+}

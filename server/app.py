@@ -372,6 +372,62 @@ async def logout(request: Request) -> JSONResponse:
     return resp
 
 
+_SAFE_ID = re.compile(r"[A-Za-z0-9_-]{8,80}")
+
+
+def _remove_owned_files(directory: Path, item_id: str, known_path: str | None) -> None:
+    """Delete a clone's or song's files: the recorded path plus anything
+    derived from it (song stems are written as <id>_<stem>.mp3 beside it)."""
+    paths = [known_path] if known_path else []
+    if _SAFE_ID.fullmatch(item_id or ""):          # ids are server uuids; never glob anything else
+        paths += [str(p) for p in directory.glob(f"{item_id}*")]
+    for path in set(paths):
+        try:
+            if path and os.path.isfile(path):
+                os.unlink(path)
+        except OSError as e:
+            print(f"[account] could not remove {path}: {e!r}")
+
+
+async def delete_account(request: Request) -> JSONResponse:
+    """Self-service account deletion (Google Play requires it in the app).
+    Needs the current password again, so a borrowed unlocked phone or a stolen
+    cookie is not enough to wipe someone's account."""
+    user = await _current_user(request)
+    if not user:
+        return _unauthorized()
+    ip = _client_ip(request)
+    if auth.login_blocked(ip):
+        return JSONResponse({"error": "too many attempts, try again later"}, status_code=429)
+    body = await _read_json(request)
+    if body is None:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    if user["is_admin"]:
+        # Deleting the owner account from the app would lock the owner out of
+        # the master control page with no way back in.
+        return JSONResponse(
+            {"error": "The owner account cannot be deleted from the app."}, status_code=403
+        )
+    if not auth.verify_password(str(body.get("password", "")), db.password_record(user)):
+        auth.record_attempt(ip)
+        return JSONResponse({"error": "That password is not correct."}, status_code=401)
+    auth.clear_attempts(ip)
+
+    email = user["email"]
+    result = await db.delete_account(email)
+    for c in result["clones"]:
+        _remove_owned_files(CLONE_DIR, c["id"], c["path"])
+    for s in result["songs"]:
+        _remove_owned_files(SONGS_DIR, s["id"], s["audio_path"])
+    print(f"[account] deleted user id={user['id']} clones={len(result['clones'])} "
+          f"songs={len(result['songs'])}")
+    email_service.send_account_deleted(email)
+
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE_NAME, path="/")
+    return resp
+
+
 async def me(request: Request) -> JSONResponse:
     user = await _current_user(request)
     if not user:
@@ -2746,6 +2802,7 @@ routes = [
     Route("/auth/login", login, methods=["POST"]),
     Route("/auth/logout", logout, methods=["POST"]),
     Route("/auth/me", me, methods=["GET"]),
+    Route("/auth/delete-account", delete_account, methods=["POST"]),
     Route("/auth/forgot", forgot_password, methods=["POST"]),
     Route("/auth/reset", reset_password, methods=["POST"]),
     Route("/voices", voices, methods=["GET"]),

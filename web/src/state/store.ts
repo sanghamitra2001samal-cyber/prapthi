@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { tts } from '../tts/manager';
 import type { Voice } from '../tts/types';
 import {
+  clearAccountHistory,
   loadHistory,
   purgeSharedHistory,
   saveHistory,
@@ -92,6 +93,7 @@ interface AppState {
     password: string
   ) => Promise<authApi.AuthResult>;
   logout: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<authApi.AuthResult>;
 
   // actions
   init: () => Promise<void>;
@@ -304,6 +306,24 @@ export const useStore = create<AppState>((set, get) => ({
   forgotPassword: (email) => authApi.forgotPassword(email),
   resetPassword: (email, code, password) =>
     authApi.resetPassword(email, code, password),
+
+  async deleteAccount(password) {
+    const res = await authApi.deleteAccount(password);
+    if (!res.ok) return res;
+    get().stop();
+    clearAccountHistory();          // this device's copy goes with the account
+    setStorageAccount(null);
+    set({
+      authStatus: 'out', user: null, isAdmin: false, voices: [],
+      voicesLoaded: false, history: [], lastGen: null, lastAudioUrl: null,
+    });
+    try {
+      window.location.replace('/delete-account?done=1');
+    } catch {
+      /* non-browser context (tests) */
+    }
+    return res;
+  },
 
   async logout() {
     await authApi.logout();

@@ -53,12 +53,14 @@ npm run android:debug      # -> android/app/build/outputs/apk/debug/app-debug.ap
 ```
 
 ### Releasing to Google Play
-1. Once: `scripts/create-upload-key.sh` — you choose the password; back up
-   `android/prapthi-upload.jks` and the password. Both are git-ignored.
+1. The upload key already exists: `android/prapthi-upload.jks`, with its
+   password in `android/keystore.properties` (both git-ignored). **Back both
+   up.** `scripts/create-upload-key.sh` makes a new one only if they are lost.
 2. Raise `versionCode` in `android/app/build.gradle` for every upload.
 3. `npm run android:release` → `android/app/build/outputs/bundle/release/app-release.aab`.
 4. Play Console: new app, enrol in Play App Signing, upload the `.aab`.
-   Listing icon: `store/play-icon-512.png`.
+   Listing text, graphics, Data safety answers and the release checklist are
+   in `store/PLAY-LISTING.md`.
 5. Payments: the app sells plans through Razorpay. Google Play requires Play
    Billing for digital goods unless the app is enrolled in its India
    alternative/user-choice billing programme — enrol before submitting.

@@ -84,8 +84,11 @@ export function loadHistory(): Generation[] {
 
 export function saveHistory(items: Generation[]): boolean {
   try {
+    // The account's own key. (It used to write the old shared key, which the
+    // next sign-in wiped and loadHistory never read: history vanished on every
+    // reload and sat where another account on this browser could read it.)
     localStorage.setItem(
-      HISTORY_KEY,
+      historyKey(),
       JSON.stringify(items.slice(0, HISTORY_CAP))
     );
     return true;
@@ -117,5 +120,14 @@ export function savePrefs(prefs: Prefs): void {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   } catch {
     /* ignore — best effort */
+  }
+}
+
+/** Forget the current account's history on this device (account deletion). */
+export function clearAccountHistory(): void {
+  try {
+    if (currentAccount) localStorage.removeItem(historyKey());
+  } catch {
+    /* storage blocked — nothing stored to remove */
   }
 }

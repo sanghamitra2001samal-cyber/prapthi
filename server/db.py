@@ -333,6 +333,34 @@ async def delete_song(sid: str, owner: str) -> Optional[str]:
         return row["audio_path"] if row else None
 
 
+# --- account deletion ------------------------------------------------------ #
+async def delete_account(email: str) -> dict[str, Any]:
+    """Erase an account and everything it owns, in one transaction.
+
+    Payment records are kept on purpose: Indian tax and accounting law require
+    a business to keep its sales records, so the ledger outlives the account.
+    Returns the deleted clones and songs so the caller can remove their files
+    (files are not transactional, so they go only after the rows are gone).
+    """
+    email = email.lower()
+    async with pool.connection() as conn:
+        async with conn.transaction():
+            cur = await conn.execute(
+                "DELETE FROM cloned_voices WHERE owner = %s RETURNING id, path", (email,)
+            )
+            clones = await cur.fetchall()
+            cur = await conn.execute(
+                "DELETE FROM songs WHERE owner = %s RETURNING id, audio_path", (email,)
+            )
+            songs = await cur.fetchall()
+            await conn.execute("DELETE FROM email_codes WHERE email = %s", (email,))
+            cur = await conn.execute(
+                "DELETE FROM users WHERE email = %s RETURNING id", (email,)
+            )
+            gone = await cur.fetchone()
+    return {"deleted": gone is not None, "clones": clones, "songs": songs}
+
+
 # --- billing ---------------------------------------------------------- #
 async def mark_paid(payment_id: str, order_id: str, email: str, plan: str,
                     amount_paise: int, source: str, allowance: int,

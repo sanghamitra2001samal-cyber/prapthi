@@ -92,3 +92,14 @@ def send_reset(to: str, code: str) -> None:
         "Enter it with your new password on the reset screen. "
         "It expires in 15 minutes.\n\nIf you didn't request this, ignore this email.",
     )
+
+
+def send_account_deleted(to: str) -> None:
+    send_email(
+        to,
+        "Your Prapthi Ai account has been deleted",
+        "Your Prapthi Ai account was deleted at your request, together with "
+        "your cloned voices, songs and their audio files. Payment records are "
+        "kept, as Indian tax law requires.\n\nIf you did not ask for this, "
+        "reply to this email straight away.",
+    )

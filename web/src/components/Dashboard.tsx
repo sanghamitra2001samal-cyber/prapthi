@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DeleteAccountDialog } from './DeleteAccountDialog';
 import {
   AudioLines,
   Mic,
@@ -8,6 +9,7 @@ import {
   HelpCircle,
   Info,
   CreditCard,
+  Trash2,
   LogOut,
   Menu,
   X,
@@ -283,9 +285,11 @@ function Dock({
   const isAdmin = useStore((s) => s.isAdmin);
   const logout = useStore((s) => s.logout);
   const [menu, setMenu] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const groups = isAdmin ? [...GROUPS, ADMIN_GROUP] : GROUPS;
 
   return (
+    <>
     <aside className="vf-theme-anim fixed inset-y-3 left-3 z-40 hidden w-[68px] flex-col items-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/85 p-2 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.7)] backdrop-blur-xl md:flex">
       <button onClick={() => navigate('/dashboard')} className="mb-1 grid h-11 w-11 place-items-center rounded-xl" aria-label="Home">
         <img src="/logo.png" alt="Prapthi Ai" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5 shadow-[0_4px_16px_-6px_var(--color-accent)] ring-1 ring-[var(--color-accent)]/30" />
@@ -329,11 +333,18 @@ function Dock({
               <MenuRow icon={Info} label="About" onClick={() => { setMenu(false); navigate('/about'); }} />
               <div className="my-1 h-px bg-[var(--color-border)]" />
               <MenuRow icon={LogOut} label="Log out" danger onClick={async () => { setMenu(false); await logout(); }} />
+              {!isAdmin && (
+                <MenuRow icon={Trash2} label="Delete account" danger onClick={() => { setMenu(false); setDeleting(true); }} />
+              )}
             </div>
           </>
         )}
       </div>
     </aside>
+    {/* Outside the rail: its backdrop blur would make the rail, not the
+        screen, the frame for a fixed-position dialog. */}
+    <DeleteAccountDialog open={deleting} onClose={() => setDeleting(false)} />
+    </>
   );
 }
 
@@ -368,8 +379,10 @@ function MobileMenu({
 }) {
   const logout = useStore((s) => s.logout);
   const isAdmin = useStore((s) => s.isAdmin);
+  const [deleting, setDeleting] = useState(false);
   const groups = isAdmin ? [...GROUPS, ADMIN_GROUP] : GROUPS;
   return (
+    <>
     <div className={`fixed inset-0 z-50 md:hidden ${open ? '' : 'pointer-events-none'}`}>
       <div className={`absolute inset-0 bg-black/60 transition-opacity ${open ? 'opacity-100' : 'opacity-0'}`} onClick={onClose} aria-hidden />
       <aside className={`absolute inset-y-0 left-0 flex w-72 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] p-3 transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -402,8 +415,17 @@ function MobileMenu({
         <button onClick={async () => { onClose(); await logout(); }} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-error)]/10 hover:text-[var(--color-error)]">
           <LogOut size={18} /> Log out
         </button>
+        {!isAdmin && (
+          <button onClick={() => { onClose(); setDeleting(true); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] hover:bg-[var(--color-error)]/10 hover:text-[var(--color-error)]">
+            <Trash2 size={18} /> Delete account
+          </button>
+        )}
       </aside>
     </div>
+    {/* Outside the drawer: it turns pointer events off once closed, and the
+        drawer closes as this opens, which would leave the dialog untappable. */}
+    <DeleteAccountDialog open={deleting} onClose={() => setDeleting(false)} />
+    </>
   );
 }
 
