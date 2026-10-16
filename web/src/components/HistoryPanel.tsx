@@ -7,6 +7,10 @@ export function HistoryPanel() {
   const open = useStore((s) => s.overlay === 'history');
   const close = useStore((s) => s.closeOverlay);
   const history = useStore((s) => s.history);
+  // Show each voice's current name: history stores the name it had when the
+  // audio was made, so a renamed voice would otherwise keep its old label.
+  const voices = useStore((s) => s.voices);
+  const nameOf = (id: string, saved: string) => voices.find((v) => v.id === id)?.name ?? saved;
   const storageOk = useStore((s) => s.storageOk);
   const loadFromHistory = useStore((s) => s.loadFromHistory);
   const deleteHistory = useStore((s) => s.deleteHistory);
@@ -66,7 +70,7 @@ export function HistoryPanel() {
               >
                 <p className="line-clamp-2 text-sm">{h.text}</p>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">
-                  {h.voiceName} · {relativeTime(h.createdAt)}
+                  {nameOf(h.voiceId, h.voiceName)} · {relativeTime(h.createdAt)}
                 </p>
               </button>
               <div className="mt-2 flex gap-2">
