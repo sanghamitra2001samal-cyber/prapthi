@@ -13,6 +13,11 @@ const CLONE_LANGS: [string, string][] = [
   ['he', 'Hebrew'], ['ms', 'Malay'], ['sw', 'Swahili'],
 ];
 
+/** Lower-case and drop accent marks, so typing "vagdhenu" finds "Vāgdhenu". */
+function fold(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 export function VoicePicker() {
   const open = useStore((s) => s.overlay === 'voices');
   const close = useStore((s) => s.closeOverlay);
@@ -73,7 +78,7 @@ export function VoicePicker() {
   );
 
   const filtered = voices.filter((v) => {
-    if (query && !v.name.toLowerCase().includes(query.toLowerCase()))
+    if (query && !fold(v.name).includes(fold(query)))
       return false;
     if (gender !== 'all' && v.gender !== gender) return false;
     if (lang !== 'all' && !v.lang.startsWith(lang)) return false;

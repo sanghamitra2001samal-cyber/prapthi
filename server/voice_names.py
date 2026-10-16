@@ -180,8 +180,18 @@ def _assign(voice_id: str, lang: str, gender: str) -> str:
     return names[h % len(names)]
 
 
+# Names that are the product itself, not machinery, and must be shown as-is.
+# Vāgdhenu is Prapthi's own Sanskrit chant voice: hiding it behind a generic
+# person's name ("Shaunak") made it impossible to find.
+_KEEP_NAMES = {
+    "vagdhenu-sa-chant": "Vāgdhenu (Sanskrit chant)",
+}
+
+
 def pretty(voice_id: str, raw: str, lang: str = "en", gender: str = "female") -> str:
     """The name a customer should see: a person, never the machinery."""
+    if voice_id in _KEEP_NAMES:
+        return _KEEP_NAMES[voice_id]
     name = _TIER_WORDS.sub("", _ENGINE_SUFFIX.sub("", raw or "")).strip()
     # Drop the " · Language" decoration wherever it sits — the picker already
     # shows the language, and it may be followed by a trait like "(soft)".
