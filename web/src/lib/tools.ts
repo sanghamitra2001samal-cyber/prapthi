@@ -157,5 +157,8 @@ export interface Transcript {
   text: string;
   segments: Array<{ start: number; end: number; text: string }>;
 }
-export const transcribe = (file: File) =>
-  uploadForm<Transcript>('/transcribe', file, {});
+/** language: a Whisper code ("hi", "bn"...) or '' to auto-detect. The page
+ *  always asks for the accurate model; the phone line uses the fast one. */
+export const transcribe = (file: File, language = '') =>
+  uploadForm<Transcript>('/transcribe', file,
+    language ? { quality: 'accurate', language } : { quality: 'accurate' });

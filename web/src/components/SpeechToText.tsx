@@ -3,9 +3,21 @@ import { FileText, Upload, Loader2, Copy } from 'lucide-react';
 import { useStore } from '../state/store';
 import * as tools from '../lib/tools';
 
+/* Whisper's own codes. Odia is missing because Whisper has no Odia model.
+   Auto-detection mistakes most Indian languages for Hindi (or worse), so the
+   page asks people to choose. */
+const LANGUAGES: Array<[string, string]> = [
+  ['', 'Detect automatically'],
+  ['en', 'English'], ['hi', 'Hindi'], ['bn', 'Bengali'], ['ta', 'Tamil'],
+  ['te', 'Telugu'], ['mr', 'Marathi'], ['gu', 'Gujarati'], ['kn', 'Kannada'],
+  ['ml', 'Malayalam'], ['pa', 'Punjabi'], ['ur', 'Urdu'], ['as', 'Assamese'],
+  ['ne', 'Nepali'], ['sa', 'Sanskrit'],
+];
+
 export function SpeechToText() {
   const toast = useStore((s) => s.toast);
   const [file, setFile] = useState<File | null>(null);
+  const [language, setLanguage] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<tools.Transcript | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -18,7 +30,7 @@ export function SpeechToText() {
     setBusy(true);
     setResult(null);
     try {
-      const r = await tools.transcribe(file);
+      const r = await tools.transcribe(file, language);
       setResult(r);
       toast({ kind: 'success', message: `Transcribed (${r.language}).` });
     } catch (e) {
@@ -48,7 +60,8 @@ export function SpeechToText() {
         <h2 className="text-xl font-bold tracking-tight">Speech to Text</h2>
       </div>
       <p className="mb-6 text-sm text-[var(--color-muted)]">
-        Transcribe any audio or video into text with timestamps — 90+ languages, auto-detected.
+        Transcribe any audio or video into text with timestamps, in English and Indian
+        languages. Choose the language for the best result.
       </p>
 
       <div className="space-y-5">
@@ -67,13 +80,33 @@ export function SpeechToText() {
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
 
+        <label className="block text-sm">
+          <span className="mb-1.5 block font-medium">Language spoken in the recording</span>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            disabled={busy}
+            className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-fg)]"
+          >
+            {LANGUAGES.map(([code, label]) => (
+              <option key={code || 'auto'} value={code}>{label}</option>
+            ))}
+          </select>
+          {!language && (
+            <span className="mt-1.5 block text-xs text-[var(--color-muted)]">
+              For Indian languages, choose the language: automatic detection often
+              mistakes them for Hindi and writes the wrong script.
+            </span>
+          )}
+        </label>
+
         <button
           onClick={run}
           disabled={busy}
           className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-accent)] px-6 py-3.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
         >
           {busy ? <Loader2 size={17} className="animate-spin" /> : <FileText size={17} />}
-          {busy ? 'Transcribing…' : 'Transcribe'}
+          {busy ? 'Transcribing… (long recordings take a few minutes)' : 'Transcribe'}
         </button>
 
         {result && (

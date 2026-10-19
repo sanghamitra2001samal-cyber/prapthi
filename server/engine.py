@@ -1385,7 +1385,9 @@ class SvaraEngine:
     _VOICES = {
         "svara-te-f": ("Telugu", "te-IN", "female", "te_female"),
         "svara-te-m": ("Telugu", "te-IN", "male", "te_male"),
-        "svara-hi-f": ("Hindi", "hi-IN", "female", "ananya"),
+        # Was the named speaker "ananya", which the model read aloud before
+        # the text in 3 of 4 test clips. Every other voice uses a generic label.
+        "svara-hi-f": ("Hindi", "hi-IN", "female", "hi_female"),
         "svara-hi-m": ("Hindi", "hi-IN", "male", "aditya"),
         "svara-hi-f2": ("Hindi (alt)", "hi-IN", "female", "hi_female"),
         "svara-hi-m2": ("Hindi (alt)", "hi-IN", "male", "hi_male"),
@@ -1434,10 +1436,15 @@ class SvaraEngine:
         except Exception as e:
             raise EngineError(f"svara service unreachable: {e}") from e
 
+    # Still synthesise (saved settings keep working) but are not offered:
+    # svara-hi-f now uses the same speaker, so this one would be its twin.
+    _UNLISTED = {"svara-hi-f2"}
+
     def list_voices(self) -> list[VoiceInfo]:
         return [
             VoiceInfo(id=vid, name=f"{disp} (Svara, Emotional)", lang=lang, gender=g)
             for vid, (disp, lang, g, _sv) in self._VOICES.items()
+            if vid not in self._UNLISTED
         ]
 
     def synthesize(

@@ -52,6 +52,37 @@ def _get_whisper():
     return _whisper
 
 
+# Speech-to-text for /transcribe (phone answers, short clips). Separate from the dubbing
+# model so its size can change without touching dubbing. On the CPU-only VM, "small" with the
+# language set answers in ~1.3 s; "large-v3-turbo" is more accurate but ~5.6 s per clip, too
+# slow for a live call. Set VOXFORGE_STT_MODEL=large-v3-turbo on a GPU host.
+_stt = None
+STT_MODEL = os.environ.get("VOXFORGE_STT_MODEL", "small")
+
+# The studio's Speech to Text page, where accuracy matters more than speed.
+# Measured on clips of known text (Oct 2026): "small" writes Bengali, Gujarati,
+# Marathi, Malayalam and Punjabi in Devanagari, and auto-detects Telugu and
+# Kannada as Sinhala. large-v3-turbo with the language given writes the right
+# script: Gujarati 5%, Kannada 8%, Bengali 18%, Telugu 20% character errors.
+_stt_accurate = None
+STT_ACCURATE_MODEL = os.environ.get("VOXFORGE_STT_ACCURATE_MODEL", "large-v3-turbo")
+
+
+def _get_stt():
+    global _stt
+    if _stt is None:
+        from faster_whisper import WhisperModel
+        import torch
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        ct = "float16" if dev == "cuda" else "int8"
+        try:
+            _stt = WhisperModel(STT_MODEL, device=dev, compute_type=ct)
+        except Exception as e:  # e.g. an older faster-whisper without this model name
+            print(f"[stt] {STT_MODEL} unavailable ({e!r}); using the dubbing model")
+            _stt = _get_whisper()
+    return _stt
+
+
 def _get_mt():
     global _mt, _mt_tok
     if _mt is None:
@@ -76,10 +107,34 @@ def extract_audio(in_path: str, wav_path: str) -> None:
                     "-ar", "16000", wav_path], capture_output=True)
 
 
-def transcribe(wav_path: str) -> tuple[list[dict], str]:
-    """Return ([{start,end,text}], detected_language)."""
-    model = _get_whisper()
-    segments, info = model.transcribe(wav_path, vad_filter=True, beam_size=5)
+def _get_stt_accurate():
+    global _stt_accurate
+    if _stt_accurate is None:
+        from faster_whisper import WhisperModel
+        import torch
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        ct = "float16" if dev == "cuda" else "int8"
+        try:
+            _stt_accurate = WhisperModel(STT_ACCURATE_MODEL, device=dev, compute_type=ct)
+        except Exception as e:  # never leave the page without a model
+            print(f"[stt] {STT_ACCURATE_MODEL} unavailable ({e!r}); using {STT_MODEL}")
+            _stt_accurate = _get_stt()
+    return _stt_accurate
+
+
+def transcribe(wav_path: str, language: str | None = None, vad: bool = True,
+               stt: bool = False, accurate: bool = False) -> tuple[list[dict], str]:
+    """Return ([{start,end,text}], language).
+
+    language: a Whisper code ("hi", "en", ...) to skip auto-detection, which misreads short
+    Hindi answers as English. vad=False keeps very short replies ("हाँ") that the silence
+    filter would drop; use it for clips already trimmed to the utterance. stt=True uses the
+    /transcribe model instead of the dubbing one; accurate=True the larger model the studio's
+    Speech to Text page uses.
+    """
+    model = _get_stt_accurate() if accurate else (_get_stt() if stt else _get_whisper())
+    segments, info = model.transcribe(wav_path, vad_filter=vad, beam_size=5,
+                                      language=language or None)
     segs = []
     for s in segments:
         t = (s.text or "").strip()

@@ -2161,9 +2161,17 @@ async def transcribe_audio(request: Request) -> JSONResponse:
                 pass
         return _refused
 
+    # Optional hints from callers that know what they are sending (e.g. a phone IVR):
+    # language = a Whisper code such as "hi"; vad = "0" for clips already trimmed to speech.
+    _lang = str(form.get("language") or "").strip().lower()
+    _lang = _lang if re.fullmatch(r"[a-z]{2,3}", _lang) else None
+    _vad = str(form.get("vad") or "1").strip() != "0"
+    # The studio page asks for accuracy; the phone line keeps the fast model.
+    _accurate = str(form.get("quality") or "").strip().lower() == "accurate"
+
     def _work():
         dubbing.extract_audio(src, wav)
-        return dubbing.transcribe(wav)
+        return dubbing.transcribe(wav, language=_lang, vad=_vad, stt=True, accurate=_accurate)
 
     try:
         segs, lang = await run_in_threadpool(_work)

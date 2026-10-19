@@ -33,7 +33,8 @@ _MIME = {v: k for k, v in _EXT.items()}
 # 3 = mms-hin baseline pitch, so it stops crossing the male/female boundary.
 # 5 = Bengali pace lift; cached Bengali from before it would still drag.
 # 6 = that lift pulled back off MMS, which scaled it very differently.
-_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "6")
+# 7 = Svara Hindi female off the "ananya" speaker, which spoke its own name.
+_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "7")
 
 
 def _key(voice_id: str, text: str, rate, pitch, volume) -> str:
