@@ -37,6 +37,7 @@ import cache
 import db
 import email_service
 import dubbing
+import fast_stt
 import hinglish
 import rvcbridge
 import sargam
@@ -176,6 +177,14 @@ def _warmup() -> None:
             _warm_one(fast)
     except Exception as e:  # never let warm-up affect server health
         print(f"[voxforge] fast warm-up skipped: {e!r}")
+
+    # 1b) Fast Hindi speech-to-text for phone answers (/stt/fast); opt-out VOXFORGE_WARMUP_FAST_STT=0.
+    if os.environ.get("VOXFORGE_WARMUP_FAST_STT", "1") == "1":
+        try:
+            fast_stt.warm()
+            print("[voxforge] fast STT warm-up complete")
+        except Exception as e:
+            print(f"[voxforge] fast STT warm-up skipped: {e!r}")
 
     # 2) Parler HD (heavy, ~140s, holds ~4GB) — opt-out via VOXFORGE_WARMUP_PARLER=0.
     #    Safe because torch engines serialize on _TORCH_LOCK inside the engine,
@@ -2787,6 +2796,52 @@ async def capabilities(request: Request) -> Response:
     return JSONResponse(_CAPS_CACHE["v"])
 
 
+async def stt_fast(request: Request) -> JSONResponse:
+    """Short phone answers → text, fast. JSON body: {audio: base64 mono 16-bit PCM,
+    sampleRate: 16000|8000, language: "hi-IN"}. Hindi uses the fast CTC model (~0.1 s);
+    other languages fall back to Whisper. No file upload or ffmpeg round trip."""
+    user = await _current_user(request)
+    if not user:
+        return _unauthorized()
+    body = await _read_json(request)
+    if body is None:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    import base64 as _b64
+    try:
+        pcm = _b64.b64decode(str(body.get("audio") or ""), validate=False)
+    except Exception:
+        return JSONResponse({"error": "audio must be base64 PCM"}, status_code=400)
+    rate = int(body.get("sampleRate") or 16000)
+    if rate not in (8000, 16000):
+        return JSONResponse({"error": "sampleRate must be 8000 or 16000"}, status_code=400)
+    seconds = len(pcm) / 2 / rate
+    if seconds > 30:
+        return JSONResponse({"error": "clip longer than 30 s; use /transcribe"}, status_code=413)
+    lang = str(body.get("language") or "hi").split("-")[0].lower()
+
+    _refused = await _charge(user["email"], "stt", seconds)
+    if _refused is not None:
+        return _refused
+    t0 = time.time()
+    if lang == "hi":
+        text = await run_in_threadpool(fast_stt.transcribe_pcm, pcm, rate)
+        engine = "ctc-hi"
+    else:
+        import tempfile as _tf, wave as _wave
+        wav = _tf.mktemp(suffix=".wav")
+        try:
+            with _wave.open(wav, "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate); w.writeframes(pcm)
+            segs, _l = await run_in_threadpool(dubbing.transcribe, wav, lang, False, True)
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(wav)
+        text = " ".join(s["text"] for s in segs)
+        engine = "whisper"
+    return JSONResponse({"text": text, "language": lang, "engine": engine,
+                         "ms": int((time.time() - t0) * 1000)})
+
+
 async def demo_synthesize(request: Request) -> Response:
     # public: homepage "Try the generator" — no login, capped + rate-limited
     return await _synth(request, preview=False, demo=True)
@@ -2835,6 +2890,7 @@ routes = [
     Route("/isolate/{jid}", isolate_status, methods=["GET"]),
     Route("/isolate/{jid}/file/{kind}", isolate_file, methods=["GET"]),
     Route("/transcribe", transcribe_audio, methods=["POST"]),
+    Route("/stt/fast", stt_fast, methods=["POST"]),
     Route("/agent/chat", agent_chat, methods=["POST"]),
     Route("/agent/voice", agent_voice, methods=["POST"]),
     Route("/audiobook", audiobook_create, methods=["POST"]),
