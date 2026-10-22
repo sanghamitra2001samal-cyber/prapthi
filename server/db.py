@@ -99,6 +99,16 @@ CREATE TABLE IF NOT EXISTS songs (
     deleted_at       TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_songs_owner ON songs (owner, created_at);
+
+-- One row per successful sign-in. users.last_login_at only keeps the latest,
+-- so before this table nobody could say how many sign-ins had happened.
+CREATE TABLE IF NOT EXISTS login_events (
+    id     BIGSERIAL PRIMARY KEY,
+    email  TEXT NOT NULL,
+    at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_login_events_at ON login_events (at);
+CREATE INDEX IF NOT EXISTS idx_login_events_email ON login_events (email);
 """
 
 # Idempotent column adds for existing deployments.
@@ -170,6 +180,7 @@ async def touch_login(email: str) -> None:
         await conn.execute(
             "UPDATE users SET last_login_at = now() WHERE email = %s", (email.lower(),)
         )
+        await conn.execute("INSERT INTO login_events (email) VALUES (%s)", (email.lower(),))
 
 
 def password_record(user: dict) -> dict:
@@ -354,6 +365,7 @@ async def delete_account(email: str) -> dict[str, Any]:
             )
             songs = await cur.fetchall()
             await conn.execute("DELETE FROM email_codes WHERE email = %s", (email,))
+            await conn.execute("DELETE FROM login_events WHERE email = %s", (email,))
             cur = await conn.execute(
                 "DELETE FROM users WHERE email = %s RETURNING id", (email,)
             )
@@ -505,11 +517,20 @@ async def admin_stats() -> dict[str, Any]:
 
         logins = await many("""
             SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
-                   count(u.email)               AS logins
+                   count(e.id)                  AS logins
               FROM generate_series(
                      (now() - interval '29 days')::date, now()::date, interval '1 day') AS d(day)
-              LEFT JOIN users u ON u.last_login_at::date = d.day
+              LEFT JOIN login_events e ON e.at::date = d.day
              GROUP BY d.day ORDER BY d.day""")
+
+        login_totals = await one("""
+            SELECT count(*)                                                  AS all_time,
+                   count(*) FILTER (WHERE at > now() - interval '24 hours') AS today,
+                   count(*) FILTER (WHERE at > now() - interval '7 days')   AS week,
+                   count(*) FILTER (WHERE at > now() - interval '30 days')  AS month,
+                   count(DISTINCT email)                                     AS people,
+                   to_char(min(at), 'YYYY-MM-DD')                            AS since
+              FROM login_events""")
 
         top = await many("""
             SELECT email, plan, chars_used, chars_allowance,
@@ -545,6 +566,7 @@ async def admin_stats() -> dict[str, Any]:
     return {
         "totals": dict(totals), "usage": dict(usage), "plans": plans,
         "signups_daily": signups, "logins_daily": logins,
+        "login_totals": dict(login_totals),
         "top_users": top, "recent_users": recent,
         "revenue": dict(revenue), "recent_payments": payments,
         "clones": clones["n"], "songs": songs["n"],

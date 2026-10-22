@@ -18,6 +18,9 @@ type Stats = {
   plans: Row[];
   signups_daily: { day: string; signups: number }[];
   logins_daily: { day: string; logins: number }[];
+  /** Counted from login_events, which only exists from the day it was added. */
+  login_totals: { all_time: number; today: number; week: number; month: number;
+                  people: number; since: string | null };
   top_users: Row[];
   recent_users: Row[];
   revenue: Record<string, number>;
@@ -147,6 +150,10 @@ export default function Admin() {
                   sub={`${n(stats.totals.new_today)} today`} />
             <Card label="Active today" value={n(stats.totals.active_today)}
                   sub={`${n(stats.totals.active_month)} this month`} />
+            <Card label="Sign-ins" value={n(stats.login_totals.all_time)}
+                  sub={stats.login_totals.since
+                    ? `${n(stats.login_totals.today)} today · ${n(stats.login_totals.week)} this week · counted since ${stats.login_totals.since}`
+                    : 'Counting starts with the next sign-in'} />
             <Card label="Characters generated" value={n(stats.usage.chars_used)}
                   sub={`by ${n(stats.usage.users_who_generated)} accounts`} />
             <Card label="Revenue" value={`₹${n(stats.revenue.paise / 100)}`}
@@ -158,7 +165,7 @@ export default function Admin() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <Bars label="Sign-ups per day"
                   data={stats.signups_daily.map((d) => ({ day: d.day, v: d.signups }))} />
-            <Bars label="Last sign-in per day"
+            <Bars label="Sign-ins per day"
                   data={stats.logins_daily.map((d) => ({ day: d.day, v: d.logins }))} />
           </div>
 
