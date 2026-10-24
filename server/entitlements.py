@@ -142,13 +142,20 @@ def too_expensive_message(op: str, need: int, left: int) -> str:
 # caps come from the smaller of the two, with a 15% margin — a request that
 # cannot finish before its client gives up must never be accepted.
 _ENGINE_LIMITS = {
-    # IndicF5 HD — still the slowest, but half what it was. 1.58 s/char was
-    # measured at f5_tts's default 32 flow-matching steps; the service now runs
-    # 16 (IF5_NFE, same WER and pitch for half the time), measured at 0.68.
-    # 0.75 leaves headroom for a busy box. NOTE: this cap is only honest while
-    # IF5_NFE stays at 16 — raise the rate back toward 1.58 if that changes.
-    "if5": (0.75, 300.0),
-    "svara-": (0.26, 300.0),
+    # Cloned HD voices keep their reference clip on this box, so if5_synth never
+    # sends them to the GPU: they run at the CPU rate. Must stay ahead of "if5".
+    "if5clone:": (0.75, 300.0),
+    # IndicF5 HD. On CPU it measured 0.68 s/char at 16 flow-matching steps
+    # (IF5_NFE); it now runs on the GPU. Re-measure if either changes.
+    # MEASURED 24 Oct 2026 on the A10G: 0.017 s/char flat from 340 to 2,500
+    # characters (2,500 in 43 s). The old 0.75 was the CPU rate and capped HD
+    # voices at 340 characters, refusing ordinary paragraphs. 0.025 leaves room
+    # for a busy GPU against the 180 s GPU window in engine.if5_synth. If the GPU
+    # is down the CPU fallback cannot finish long text; that fails uncharged.
+    "if5": (0.025, 180.0),
+    # MEASURED 24 Oct 2026 on the A10G: 0.105 s/char (2,000 chars in 208 s),
+    # not 0.26. 0.12 for headroom against the 300 s request timeout.
+    "svara-": (0.12, 300.0),
     "chatterbox-": (0.165, 300.0),
     "parler-": (0.165, 300.0),
     "vagdhenu": (0.30, 600.0),
