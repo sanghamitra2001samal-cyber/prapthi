@@ -134,6 +134,33 @@
       })
       .then(function () { busy = false; });
   }
+  /* ------------------------------------------------------------- back */
+  // Android's back button should close whatever is open on the page before it
+  // leaves the page. The native side asks this first; true means "handled".
+  function pressEscape() {
+    var t = document.activeElement || document.body;
+    t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  }
+  window.__prapthiBack = function () {
+    // Website menu (closes on Escape).
+    if (document.querySelector('#main-navigation.nav-open')) { pressEscape(); return true; }
+    // Studio dialogs: delete account, history, settings, voices (Escape closes them).
+    if (document.querySelector('[role="dialog"][aria-modal="true"]')) { pressEscape(); return true; }
+    // Studio account menu: a full-screen click-catcher sits behind it.
+    var catcher = document.querySelector('div.fixed.inset-0.z-40[aria-hidden="true"]');
+    if (catcher) { catcher.click(); return true; }
+    // Studio mobile drawer: open when its wrapper is not pointer-events-none.
+    var drawers = document.querySelectorAll('div.fixed.inset-0.z-50');
+    for (var i = 0; i < drawers.length; i++) {
+      var d = drawers[i], backdrop = d.firstElementChild;
+      if (!d.classList.contains('pointer-events-none') && backdrop && backdrop.getAttribute('aria-hidden') === 'true'
+          && getComputedStyle(d).display !== 'none') {
+        backdrop.click(); return true;
+      }
+    }
+    return false;
+  };
+
   // The native side routes downloads that never pass through a link click
   // (a server response sent as an attachment) to the same place.
   window.__prapthiSave = save;

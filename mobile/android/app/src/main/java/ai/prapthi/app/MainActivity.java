@@ -6,6 +6,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.splashscreen.SplashScreen;
 import com.getcapacitor.BridgeActivity;
@@ -33,17 +34,25 @@ public class MainActivity extends BridgeActivity {
         // so ours (which adds payment pop-up windows) has to go in afterwards.
         bridge.getWebView().setWebChromeClient(new ShellChromeClient(bridge));
 
-        // Back walks back through the pages; on the first page it leaves the
-        // app the way every Android app does. (Capacitor's default swallows
-        // it there, so the app could never be left with the back button.)
+        // Back first closes whatever is open on the page (the site menu, a studio
+        // dialog or drawer), then walks back through the pages, and on the first
+        // page leaves the app the way every Android app does. (Capacitor's
+        // default swallows it there, so the app could never be left with back.)
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (bridge.getWebView().canGoBack()) {
-                    bridge.getWebView().goBack();
-                } else {
-                    moveTaskToBack(true);   // keep the studio warm for next time
-                }
+                WebView web = bridge.getWebView();
+                web.evaluateJavascript(
+                    "(function(){try{return !!(window.__prapthiBack && window.__prapthiBack());}catch(e){return false;}})()",
+                    closedSomething -> {
+                        if ("true".equals(closedSomething)) return;
+                        if (web.canGoBack()) {
+                            web.goBack();
+                        } else {
+                            moveTaskToBack(true);   // keep the studio warm for next time
+                        }
+                    }
+                );
             }
         });
 
