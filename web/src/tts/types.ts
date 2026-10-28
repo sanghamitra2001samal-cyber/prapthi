@@ -35,6 +35,9 @@ export interface SynthesisRequest {
 
 export interface SynthesisCallbacks {
   onStart?(): void;
+  /** Server voices: the whole take exists and is cached, so asking for the
+   *  file again (the result player, a download) is instant and free. */
+  onReady?(): void;
   onBoundary?(charIndex: number, wordIndex: number): void;
   onEnd?(): void;
   onError?(e: Error): void;

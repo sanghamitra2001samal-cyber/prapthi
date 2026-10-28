@@ -446,23 +446,34 @@ export const useStore = create<AppState>((set, get) => ({
             // the user stops early.
             set({ status: 'playing' });
             recordGeneration(get(), set);
-            // Populate the inline result player (server voices; cache hit).
-            void get().loadResultAudio();
           },
+          // Populate the inline result player once the whole take exists — a
+          // streamed passage starts playing before its last sentence is made.
+          onReady: () => void get().loadResultAudio(),
           onBoundary: (_c, wordIndex) => set({ highlightIndex: wordIndex }),
           onEnd: () => set({ status: 'idle', highlightIndex: null }),
-          onError: () => {
+          onError: (e) => {
             set({ status: 'error', highlightIndex: null });
             get().toast({
               kind: 'error',
-              message: "Couldn't generate audio. Please try again.",
+              message: e?.message || "Couldn't generate audio. Please try again.",
             });
             set({ status: 'idle' });
           },
         }
       );
-    } catch {
-      /* handled in onError */
+    } catch (e) {
+      // Refused before any audio played (allowance used up, text too long for
+      // the voice, server busy): onError never ran, so say why here instead
+      // of leaving the button spinning.
+      if (get().status === 'loading') {
+        set({ status: 'idle', highlightIndex: null });
+        get().toast({
+          kind: 'error',
+          message:
+            (e as Error)?.message || "Couldn't generate audio. Please try again.",
+        });
+      }
     }
   },
 

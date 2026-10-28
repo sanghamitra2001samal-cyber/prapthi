@@ -29,7 +29,12 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, Response
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Route
 
 import auth
@@ -57,6 +62,18 @@ _synth_lock = asyncio.Lock()
 # where many slow (Parler ~70s) requests pile up unbounded.
 _MAX_QUEUE = int(os.environ.get("VOXFORGE_MAX_QUEUE", "4"))
 _synth_waiting = 0
+# svara runs on the GPU box behind vLLM, which batches requests that arrive
+# together: MEASURED 28 Oct 2026, three Hindi sentences took 38.8 s one after
+# another and 20.3 s sent at once. Nothing on this box is touched by a svara
+# render, so it does not need the torch lock above — only a bound.
+_svara_sem = asyncio.Semaphore(int(os.environ.get("VOXFORGE_SVARA_PARALLEL", "3")))
+# Streamed renders keep going after the listener leaves (so the finished take
+# is cached and already paid for); hold a reference so they are not collected.
+_STREAM_TASKS: set = set()
+# Renders in progress, by cache key. An identical request that arrives
+# meanwhile (the download pressed while a streamed take is still playing, a
+# double click) waits for that take instead of paying for a second one.
+_INFLIGHT: dict = {}
 
 CHAR_CAP = int(os.environ.get("VOXFORGE_CHAR_CAP", "5000"))
 # Public emotion ids accepted by /synthesize (Parler HD acts on them).
@@ -2481,29 +2498,15 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
 
     async def _render_scenario(runs_, fmt_: str = "wav"):
         """auto mode: each run in its own feeling, joined with short pauses."""
-        import io as _io
-        import numpy as _np
-        import soundfile as _sf
-        pieces, sr = [], None
+        wavs = []
         for t_, emo_ in runs_:
             r_, p_, v_ = _prosody(emo_)
             wav, _m = await _render(t_, emo_, r_, p_, v_, "wav")
-            y, s_ = _sf.read(_io.BytesIO(wav), dtype="float32", always_2d=False)
-            if y.ndim > 1:
-                y = y.mean(axis=1)
-            if sr is None:
-                sr = s_
-            elif s_ != sr:
-                import librosa as _lr
-                y = _lr.resample(y, orig_sr=s_, target_sr=sr)
-            if pieces:
-                pieces.append(_np.zeros(int(sr * 0.28), dtype=_np.float32))
-            pieces.append(y)
-        buf = _io.BytesIO()
-        _sf.write(buf, _np.concatenate(pieces), sr, format="WAV", subtype="PCM_16")
+            wavs.append(wav)
+        joined = await run_in_threadpool(_join_wavs, wavs, 0.28)
         if fmt_ == "wav":
-            return buf.getvalue(), "audio/wav"
-        return await run_in_threadpool(_wav_to_mp3, buf.getvalue())
+            return joined, "audio/wav"
+        return await run_in_threadpool(_wav_to_mp3, joined)
 
     args = (cache_vid, text, rate, pitch, volume)
 
@@ -2516,8 +2519,27 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         audio, mime = hit
         return Response(audio, media_type=mime, headers=_audio_headers("HIT"))
 
+    _same = _INFLIGHT.get(args)
+    if _same is not None:
+        await _same.wait()
+        hit = cache.get(*args, fmt)
+        if hit:
+            audio, mime = hit
+            return Response(audio, media_type=mime, headers=_audio_headers("HIT"))
+        # That render failed; make our own below.
+
+    # Slow path: synthesize. Reject when the queue is already full so a flood of
+    # slow requests can't pile up unbounded — and before charging, so a busy
+    # server never takes characters for audio it then refuses to make.
+    global _synth_waiting
+    if _synth_waiting >= _MAX_QUEUE:
+        return JSONResponse(
+            {"error": "server busy, please try again shortly"}, status_code=503
+        )
+
     # Nothing was cached, so this is about to cost real compute — which is the
     # point at which it costs the customer characters.
+    _charged = 0
     if _billable and not demo and _user and not _user.get("is_admin"):
         await db.reset_period_if_due(_user["email"])
         ok, _left = await db.consume_chars(_user["email"], _billable)
@@ -2528,23 +2550,105 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                  "code": "quota_exceeded"},
                 status_code=402,
             )
+        _charged = _billable
 
-    # Slow path: synthesize. Reject when the queue is already full so a flood of
-    # slow requests can't pile up unbounded.
-    global _synth_waiting
-    if _synth_waiting >= _MAX_QUEUE:
-        return JSONResponse(
-            {"error": "server busy, please try again shortly"}, status_code=503
-        )
+    async def _refund() -> None:
+        if _charged:
+            try:
+                await db.refund_chars(_user["email"], _charged)
+            except Exception as e:  # pragma: no cover - never mask the error
+                print(f"[voxforge] refund failed: {e!r}")
+
+    # svara renders on the GPU box and batches; everything else shares the
+    # torch lock on this box.
+    svara = not (clone or if5clone) and _voice_owner(voice_id)[0] == "SvaraEngine"
+    lock = _svara_sem if svara else _synth_lock
+
+    # Streaming: speak a passage sentence by sentence, sending each one the
+    # moment it is ready, so playback starts after the first sentence instead
+    # of after the whole passage. The joined take is cached under this same
+    # key, so the download that follows is the audio that was heard.
+    chunks = (_stream_chunks(text)
+              if body.get("stream") and len(runs) <= 1
+              and voice_id != "vagdhenu-sa-chant" else [])
+    done = asyncio.Event()
+    _INFLIGHT[args] = done
+
+    def _settle() -> None:
+        done.set()
+        if _INFLIGHT.get(args) is done:
+            del _INFLIGHT[args]
+
+    if len(chunks) > 1:
+        _synth_waiting += 1
+        q: asyncio.Queue = asyncio.Queue()
+
+        async def _one(c: str):
+            async with lock:
+                wav, _m = await _render(
+                    c, emotion, eng_rate, eng_pitch, eng_volume, "wav")
+            mp3, _mm = await run_in_threadpool(_wav_to_mp3, wav)
+            return wav, mp3
+
+        async def _produce() -> None:
+            global _synth_waiting
+            # Render one chunk ahead of playback. svara alone is slower than
+            # real time, so it gets three at once and the GPU batches them.
+            ahead = 3 if svara else 1
+            pending: list = []
+            try:
+                q.put_nowait((b"M", json.dumps(
+                    {"words": [len(c.split()) for c in chunks]}).encode()))
+                pending = [asyncio.create_task(_one(c)) for c in chunks[:ahead]]
+                wavs = []
+                for i in range(len(chunks)):
+                    wav, mp3 = await pending[i]
+                    if len(pending) < len(chunks):
+                        pending.append(asyncio.create_task(_one(chunks[len(pending)])))
+                    wavs.append(wav)
+                    q.put_nowait((b"A", mp3))
+                master = await run_in_threadpool(_join_wavs, wavs, _STREAM_GAP_S)
+                cache.put(*args, master, "audio/wav")
+                mp3m, mmime = await run_in_threadpool(_wav_to_mp3, master)
+                cache.put(*args, mp3m, mmime)
+                q.put_nowait((b"D", b""))
+            except Exception as e:
+                for t_ in pending:
+                    t_.cancel()
+                print(f"[voxforge] streamed synthesis error: {e!r}")
+                await _refund()
+                msg = (str(e) if isinstance(e, EngineError)
+                       else "synthesis failed, please try again")
+                q.put_nowait((b"E", msg.encode()))
+            finally:
+                _synth_waiting -= 1
+                _settle()
+
+        task = asyncio.create_task(_produce())
+        _STREAM_TASKS.add(task)
+        task.add_done_callback(_STREAM_TASKS.discard)
+
+        async def _frames():
+            while True:
+                kind, payload = await q.get()
+                yield kind + len(payload).to_bytes(4, "big") + payload
+                if kind in (b"D", b"E"):
+                    return
+
+        return StreamingResponse(
+            _frames(), media_type="application/x-prapthi-stream",
+            headers=_audio_headers("STREAM"))
+
     _synth_waiting += 1
     try:
         # Lock serializes torch use; threadpool keeps the event loop free.
         # Re-check the cache inside the lock in case a concurrent request just
         # produced the same audio.
-        async with _synth_lock:
+        async with lock:
             hit = cache.get(*args, fmt)
             if hit:
                 audio, mime = hit
+                await _refund()
                 return Response(
                     audio, media_type=mime, headers=_audio_headers("HIT")
                 )
@@ -2557,11 +2661,13 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                     master, mmime = await _render(
                         text, emotion, eng_rate, eng_pitch, eng_volume, "wav")
             except EngineError as e:
+                await _refund()
                 return JSONResponse({"error": str(e)}, status_code=500)
             except Exception as e:  # pragma: no cover - defensive
                 # Log detail server-side; return a generic message so internal
                 # paths / stack details aren't disclosed to clients.
                 print(f"[voxforge] synthesis error: {e!r}")
+                await _refund()
                 return JSONResponse(
                     {"error": "synthesis failed, please try again"},
                     status_code=500,
@@ -2574,6 +2680,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                 cache.put(*args, audio, mime)
     finally:
         _synth_waiting -= 1
+        _settle()
 
     return Response(audio, media_type=mime, headers=_audio_headers("MISS"))
 
@@ -2611,6 +2718,69 @@ def _tone_shape(wav: bytes, emotion: str, intensity: float, lang: str) -> bytes 
     finally:
         if os.path.exists(path):
             os.unlink(path)
+
+
+# Silence added between streamed sentences. Each sentence keeps ~60 ms of its
+# own padding at either end (engine._polish_wav), so the pause heard is about
+# 0.3 s — the longest gap the polish allows inside a single render.
+_STREAM_GAP_S = 0.18
+# A first chunk this short starts playback quickly. Each later chunk may be at
+# most twice the one before: Kokoro renders ~2.2x faster than real time on this
+# box (MEASURED 28 Oct 2026), so a chunk twice as long is ready before the one
+# playing ends and the listener never waits between sentences. Below ~20
+# characters svara mumbles.
+_STREAM_FIRST_MIN = 20
+_STREAM_MAX = 240
+
+
+def _stream_chunks(text: str) -> list[str]:
+    """Sentence-aligned pieces for streaming: a short first one, then groups
+    that grow so each is ready before the previous one finishes playing."""
+    sents = [x.strip() for x in re.split(r"(?<=[.!?।॥])\s+|\n+", text.strip())]
+    sents = [x for x in sents if x]
+    if len(sents) < 2:
+        return sents
+    first = sents.pop(0)
+    while sents and len(first) < _STREAM_FIRST_MIN:
+        first = f"{first} {sents.pop(0)}"
+    chunks, cur = [first], ""
+    for x in sents:
+        limit = min(_STREAM_MAX, max(2 * len(chunks[-1]), 2 * _STREAM_FIRST_MIN))
+        if cur and len(cur) + len(x) + 1 > limit:
+            chunks.append(cur)
+            cur = x
+        else:
+            cur = f"{cur} {x}".strip()
+    if cur:
+        # A short tail sounds clipped on its own; let it ride with the previous.
+        if len(cur) < _STREAM_FIRST_MIN and len(chunks) > 1:
+            chunks[-1] = f"{chunks[-1]} {cur}"
+        else:
+            chunks.append(cur)
+    return chunks
+
+
+def _join_wavs(wavs: list[bytes], gap_s: float) -> bytes:
+    """Concatenate WAV takes into one mono PCM-16 WAV with `gap_s` between."""
+    import io as _io
+    import numpy as _np
+    import soundfile as _sf
+    pieces, sr = [], None
+    for wav in wavs:
+        y, s_ = _sf.read(_io.BytesIO(wav), dtype="float32", always_2d=False)
+        if y.ndim > 1:
+            y = y.mean(axis=1)
+        if sr is None:
+            sr = s_
+        elif s_ != sr:
+            import librosa as _lr
+            y = _lr.resample(y, orig_sr=s_, target_sr=sr)
+        if pieces:
+            pieces.append(_np.zeros(int(sr * gap_s), dtype=_np.float32))
+        pieces.append(y)
+    buf = _io.BytesIO()
+    _sf.write(buf, _np.concatenate(pieces), sr, format="WAV", subtype="PCM_16")
+    return buf.getvalue()
 
 
 def _wav_to_mp3(wav: bytes) -> tuple[bytes, str]:
