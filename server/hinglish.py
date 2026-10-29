@@ -111,7 +111,7 @@ _DICT: dict[str, str] = {
 # Every Hindi voice we serve, across all engines. Missing one here means
 # that voice silently receives un-converted Latin text.
 _HINDI_VOICE = re.compile(
-    r"^(hf_|hm_|parler-hi|chatterbox-hi|hi_IN-|mms-hin|svara-hi|if5-)")
+    r"^(hf_|hm_|parler-hi|parler-bho|chatterbox-hi|hi_IN-|mms-hin|svara-hi|svara-bho|if5-)")
 _HAS_LATIN = re.compile(r"[A-Za-z]")
 _TOKEN = re.compile(r"[A-Za-z]+|[^A-Za-z]+")
 
@@ -166,7 +166,7 @@ _EXTRA_HINDI = {
 _TRANSLIT = [
     ("tion", "शन"), ("sion", "ेशन"), ("ough", "ओ"), ("ing", "िंग"), ("ck", "क"),
     ("sh", "श"), ("ch", "च"), ("th", "थ"), ("ph", "फ़"), ("gh", "ग"), ("wh", "व"),
-    ("kh", "ख"), ("ee", "ी"), ("ea", "ी"), ("oo", "ू"), ("ou", "ाउ"), ("ai", "ै"),
+    ("kh", "ख"), ("aa", "ा"), ("ii", "ी"), ("uu", "ू"), ("ee", "ी"), ("ea", "ी"), ("oo", "ू"), ("ou", "ाउ"), ("ai", "ै"),
     ("ay", "े"), ("ey", "े"), ("au", "ॉ"), ("aw", "ॉ"), ("oa", "ो"), ("oi", "ॉय"),
     # \x00 marks "this consonant already has its vowel — do not join it to
     # the one before". Stripped again at the end.
@@ -228,8 +228,14 @@ def _translit_latin(word: str) -> str:
             joined.append("्")
     text = "".join(joined).replace(_NO_JOIN, "")
 
-    # English rarely ends on the inherent vowel; drop a trailing "ा"/"े".
-    if len(text) > 2 and text[-1] in "ाे" and text[-2] in _CONSONANTS:
+    # A word-final "i" is long in Hindi and Bhojpuri (bani, taxi, ji), and
+    # a short one there sounds clipped.
+    if len(text) > 1 and text[-1] == "ि":
+        text = text[:-1] + "ी"
+
+    # A final "e" is usually silent (time, phone); drop it. A final "a" is
+    # said, in English and in romanized Hindi alike (data, camera, pooja).
+    if len(text) > 2 and text[-1] == "े" and text[-2] in _CONSONANTS:
         text = text[:-1]
 
     # A word cannot START with a vowel sign; promote it to the independent

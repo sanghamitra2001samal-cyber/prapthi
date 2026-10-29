@@ -44,6 +44,7 @@ import email_service
 import dubbing
 import fast_stt
 import hinglish
+import speech_text
 import rvcbridge
 import sargam
 import song as songmod
@@ -98,12 +99,14 @@ _REPEAT_PUNCT = re.compile(r"([,;:.!?।])\1+")
 _NONSPEECH = re.compile(r"[*_~^`|<>{}\\=+#@]+")
 
 
-def normalize_speech_text(text: str) -> str:
+def normalize_speech_text(text: str, lang: str = "") -> str:
     """Clean user text so TTS sounds right:
+    * numbers, money, dates, times and codes become words (hi / bho / en)
     * long digit runs (phone numbers/IDs) are read digit-by-digit
     * repeated punctuation is collapsed (avoids 'heee' artifacts)
     * stray non-speech symbols are stripped
     """
+    text = speech_text.expand(text, lang)
     text = _DIGIT_RUN.sub(lambda m: " ".join(m.group(0)), text)
     text = _NONSPEECH.sub(" ", text)
     text = _REPEAT_PUNCT.sub(r"\1", text)
@@ -117,7 +120,9 @@ RATE_LIMIT = int(os.environ.get("VOXFORGE_RATE_LIMIT", "60"))  # req/min/IP
 # "Prapthi Ai" is transliterated per language.)
 PREVIEW_TEMPLATES = {
     "en": "I am {n}. I am the voice from Prapthi Ai. How are you?",
-    "hi": "मैं {n} हूँ। मैं Prapthi Ai की आवाज़ हूँ। आप कैसे हैं?",
+    # Devanagari brand: the HD Hindi engines (IndicF5, svara) cannot read Latin.
+    "hi": "मैं {n} हूँ। मैं प्राप्ति ए आई की आवाज़ हूँ। आप कैसे हैं?",
+    "bho": "हम {n} बानी। हम प्राप्ति ए आई के आवाज बानी। रउआ कइसन बानी?",
     "ta": "நான் {n}. நான் Prapthi Ai இன் குரல். நீங்கள் எப்படி இருக்கிறீர்கள்?",
     "te": "నేను {n}. నేను Prapthi Ai నుండి వచ్చిన స్వరం. మీరు ఎలా ఉన్నారు?",
     "bn": "আমি {n}। আমি Prapthi Ai-এর কণ্ঠস্বর। আপনি কেমন আছেন?",
@@ -553,6 +558,14 @@ IF5_VOICES = {
     # left out: priya2 (142 Hz) and meera2 (158 Hz) carry female names in a
     # register that will not carry them, and raghav2 sits 0.5% from Manav,
     # which is the same voice twice rather than another one.
+    # Bhojpuri. The references are svara's native Bhojpuri speakers (bh_*),
+    # chosen as the cleanest of 4 takes each (Whisper CER 6.3%, the residue
+    # being Whisper's Hindi spelling of अउर/रउआ). IndicF5 takes its accent
+    # and delivery from the reference, so these speak Bhojpuri the way a
+    # Bhojpuri speaker does, at IndicF5 speed (~2.5 s) instead of the 58 s
+    # the Parler Bhojpuri voices took on the CPU.
+    "if5-bho-f": ("Bhojpuri (IndicF5 HD)", "bho-IN", "female", "bho_female"),
+    "if5-bho-m": ("Bhojpuri (IndicF5 HD)", "bho-IN", "male", "bho_male"),
     "if5-hi-anjali": ("Ishita · Hindi (IndicF5 HD)", "hi-IN", "female", "hi_anjali"),
     "if5-hi-sneha": ("Naina · Hindi (IndicF5 HD)", "hi-IN", "female", "hi_sneha"),
     "if5-hi-arjun": ("Samar · Hindi (IndicF5 HD)", "hi-IN", "male", "hi_arjun"),
@@ -632,6 +645,10 @@ def _curate_voices(data: list[dict]) -> list[dict]:
     ]
 
 
+# voice id -> the name the picker shows, refreshed by every /voices call.
+_PICKER_NAMES: dict[str, str] = {}
+
+
 async def voices(request: Request) -> JSONResponse:
     user = await _current_user(request)
     if not user:
@@ -681,6 +698,7 @@ async def voices(request: Request) -> JSONResponse:
     _named = voice_names.pretty_all(
         [(str(v["id"]), str(v.get("name") or ""), str(v.get("lang") or "en"),
           str(v.get("gender") or "female")) for v in data])
+    _PICKER_NAMES.update(_named)
     for v in data:
         v["name"] = _named.get(str(v["id"]), v.get("name"))
         v["premium"] = entitlements.is_premium_voice(str(v["id"]))
@@ -1786,7 +1804,7 @@ def _run_audiobook(jid: str, text: str, voice: str, gap_ms: int) -> None:
             _book_jobs[jid].update(
                 step=f"Narrating {i + 1}/{len(chunks)}",
                 progress=5 + int(85 * i / len(chunks)))
-            t = normalize_speech_text(ch)
+            t = normalize_speech_text(ch, _speech_lang(voice))
             if is_hi:
                 t = hinglish.to_devanagari(t)
             wavb, _m = ENGINE.synthesize(
@@ -1878,7 +1896,7 @@ def _run_audionative(aid: str, text: str, voice: str, title: str, owner: str) ->
                         "-i", "anullsrc=r=44100:cl=stereo", sil], capture_output=True)
         for i, ch in enumerate(chunks):
             _an_jobs[aid].update(progress=10 + int(80 * i / len(chunks)))
-            t = normalize_speech_text(ch)
+            t = normalize_speech_text(ch, _speech_lang(voice))
             if is_hi:
                 t = hinglish.to_devanagari(t)
             if voice.startswith("if5-"):
@@ -2027,7 +2045,7 @@ def _run_ads(aid: str, brief: str, lang: str, voice: str, tone: str, seconds: in
         script = _llm_chat([{"role": "system", "content": sysp},
                             {"role": "user", "content": userp}], max_tokens=320).strip()
         _ads_jobs[aid].update(step="Voicing", progress=70)
-        t = script
+        t = normalize_speech_text(script, _speech_lang(voice) or lang)
         if hinglish.is_hindi_voice(voice) or voice.startswith("if5") or lang == "hi":
             t = hinglish.to_devanagari(t)
         audio = _ads_synth(t, voice)
@@ -2223,7 +2241,18 @@ async def transcribe_audio(request: Request) -> JSONResponse:
 # Measured: 5.3 syllables/sec x 1.12 lands at ~5.9, inside the natural range.
 _BENGALI_PACE = 1.12
 
-_DEVANAGARI_ONLY = ("hi_in-", "mms-hin", "svara-hi", "if5", "hf_", "hm_")
+_DEVANAGARI_ONLY = ("hi_in-", "mms-hin", "svara-hi", "svara-bho", "if5", "hf_", "hm_")
+
+
+def _speech_lang(voice_id: str, clone: dict | None = None) -> str:
+    """The language a voice speaks, for reading numbers aloud ("" if unknown)."""
+    if clone:
+        return str(clone.get("lang") or "")
+    v = (voice_id or "").replace("server:", "")
+    if v.startswith("if5clone:"):
+        return "hi"
+    meta = _VOICE_META.get(v) or _EXTRA_VOICE_META.get(v)
+    return meta[0] if meta else ""
 
 
 def _needs_english_in_devanagari(voice_id: str) -> bool:
@@ -2287,6 +2316,10 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         else:
             meta = _VOICE_META.get(voice_id) or _EXTRA_VOICE_META.get(voice_id)
             lang, name = meta if meta else ("en", "this voice")
+            # Introduce itself by the name on its card. The engine's own label
+            # is often just the language ("मैं Hindi हूँ" from a voice the
+            # picker calls Vaishali).
+            name = _PICKER_NAMES.get(voice_id, name)
         tmpl = PREVIEW_TEMPLATES.get(lang, PREVIEW_TEMPLATES["en"])
         text = tmpl.format(n=name)
     else:
@@ -2315,7 +2348,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         # billed a third time for a WAV attempt that was refused a few lines
         # later. Measured on the submitted text, before conversion rewrites it.
         _billable = len(text)
-        text = normalize_speech_text(text)
+        text = normalize_speech_text(text, _speech_lang(voice_id, clone))
         # Hinglish: for Hindi voices, convert common romanized Hindi words to
         # Devanagari so they're pronounced natively (QA #3/#4, best-effort).
         # Sanskrit voices are excluded — the dictionary is Hindi-specific.

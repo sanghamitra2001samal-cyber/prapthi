@@ -34,7 +34,9 @@ _MIME = {v: k for k, v in _EXT.items()}
 # 5 = Bengali pace lift; cached Bengali from before it would still drag.
 # 6 = that lift pulled back off MMS, which scaled it very differently.
 # 7 = Svara Hindi female off the "ananya" speaker, which spoke its own name.
-_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "7")
+# 8 = Svara Hindi male off the "aditya" speaker, which measures as a woman.
+# 9 = times followed by the customer's own बजे were read "बजे बजे".
+_VERSION = os.environ.get("VOXFORGE_CACHE_VERSION", "9")
 
 
 def _key(voice_id: str, text: str, rate, pitch, volume) -> str:

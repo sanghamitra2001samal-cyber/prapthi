@@ -1388,7 +1388,11 @@ class SvaraEngine:
         # Was the named speaker "ananya", which the model read aloud before
         # the text in 3 of 4 test clips. Every other voice uses a generic label.
         "svara-hi-f": ("Hindi", "hi-IN", "female", "hi_female"),
-        "svara-hi-m": ("Hindi", "hi-IN", "male", "aditya"),
+        # Was the named speaker "aditya", which is not a male voice: MEASURED
+        # 29 Oct 2026 over 3 takes, F0 201-221 Hz and F2 1807-1900 Hz, the same
+        # as hi_female (170-213 Hz, 1797-1875) and far from hi_male (129-139
+        # Hz, 1635-1690). It was sold as a man. Now the real male speaker.
+        "svara-hi-m": ("Hindi", "hi-IN", "male", "hi_male"),
         "svara-hi-f2": ("Hindi (alt)", "hi-IN", "female", "hi_female"),
         "svara-hi-m2": ("Hindi (alt)", "hi-IN", "male", "hi_male"),
         "svara-sa-m": ("Sanskrit", "sa-IN", "male", "sa_male"),
@@ -1410,6 +1414,12 @@ class SvaraEngine:
         "svara-as-f": ("Assamese", "as-IN", "female", "as_female"),
         "svara-or-f": ("Odia", "or-IN", "female", "or_female"),
         "svara-ne-f": ("Nepali", "ne-NP", "female", "ne_female"),
+        # svara was trained on native Bhojpuri speakers (its bh_* voices).
+        # Until these, Bhojpuri was Hindi Parler speakers reading Bhojpuri
+        # text on the CPU: same intelligibility (Whisper CER 8.3% both), but
+        # a Hindi accent and 58 s per sentence against ~10 s here.
+        "svara-bho-f": ("Bhojpuri", "bho-IN", "female", "bh_female"),
+        "svara-bho-m": ("Bhojpuri", "bho-IN", "male", "bh_male"),
         "svara-en-f": ("English (Indian)", "en-IN", "female", "en_female"),
         "svara-en-m": ("English (Indian)", "en-IN", "male", "en_male"),
     }
@@ -1437,8 +1447,9 @@ class SvaraEngine:
             raise EngineError(f"svara service unreachable: {e}") from e
 
     # Still synthesise (saved settings keep working) but are not offered:
-    # svara-hi-f now uses the same speaker, so this one would be its twin.
-    _UNLISTED = {"svara-hi-f2"}
+    # svara-hi-f and svara-hi-m now use these same speakers, so each would
+    # be the other's twin.
+    _UNLISTED = {"svara-hi-f2", "svara-hi-m2"}
 
     def list_voices(self) -> list[VoiceInfo]:
         return [
@@ -1479,7 +1490,9 @@ class SvaraEngine:
         # MEASURED on Hindi (2 takes per setting, same sentence): 0.8/0.95/1.05
         # widens the melody 7.1 -> 8.8 semitones and shortens the worst internal
         # gap 0.39s -> 0.32s versus 0.7/0.9/1.1 — i.e. less flat, less choppy.
-        hindi = lang == "hi-IN"
+        # Bhojpuri shares Hindi's script and rhythm, and was measured with
+        # these settings (CER 7-8%, 11-12 semitones of melody).
+        hindi = lang in ("hi-IN", "bho-IN")
         temp = 0.8 if hindi else 0.6
 
         payload = {
