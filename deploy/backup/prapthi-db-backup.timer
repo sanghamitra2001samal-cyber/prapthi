@@ -1,0 +1,7 @@
+[Unit]
+Description=Prapthi nightly database backup (21:30 UTC = 03:00 IST)
+[Timer]
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
