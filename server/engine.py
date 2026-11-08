@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 
 import emotion as emotion_mod
+import idle_models
 import os
 import platform
 import re
@@ -571,16 +572,21 @@ class PiperEngine:
         return voices
 
     def _voice(self, voice_id: str):
-        if voice_id in self._loaded:
-            return self._loaded[voice_id]
-        for m in self._models:
-            if m.stem == voice_id:
-                from piper import PiperVoice
+        v = self._loaded.get(voice_id)
+        if v is None:
+            for m in self._models:
+                if m.stem == voice_id:
+                    from piper import PiperVoice
 
-                v = PiperVoice.load(str(m))
-                self._loaded[voice_id] = v
-                return v
-        raise EngineError(f"unknown voice {voice_id}")
+                    v = PiperVoice.load(str(m))
+                    self._loaded[voice_id] = v
+                    break
+            else:
+                raise EngineError(f"unknown voice {voice_id}")
+        # The caller keeps `v` while it speaks, so dropping our reference
+        # later never interrupts a request.
+        idle_models.touch(f"piper:{voice_id}", lambda: self._loaded.pop(voice_id, None) and None)
+        return v
 
     def synthesize(
         self,
@@ -838,6 +844,8 @@ class MMSEngine:
         ]
 
     def _load(self, vid: str):
+        # Called under _TORCH_LOCK, which _unload takes too.
+        idle_models.touch(f"mms:{vid}", lambda: self._unload(vid))
         if vid in self._loaded:
             return self._loaded[vid]
         import torch
@@ -850,6 +858,17 @@ class MMSEngine:
         _configure_torch()
         self._loaded[vid] = (model, tok)
         return self._loaded[vid]
+
+    def _unload(self, vid: str) -> bool:
+        if not _TORCH_LOCK.acquire(blocking=False):
+            return False                     # speaking right now: next sweep
+        try:
+            if not idle_models.is_idle(f"mms:{vid}"):
+                return False
+            self._loaded.pop(vid, None)
+            return True
+        finally:
+            _TORCH_LOCK.release()
 
     def synthesize(
         self,
@@ -1033,7 +1052,21 @@ class ParlerEngine:
             for vid, v in self._VOICES.items()
         ]
 
+    def _unload(self) -> bool:
+        if not _TORCH_LOCK.acquire(blocking=False):
+            return False
+        try:
+            if not idle_models.is_idle("parler"):
+                return False
+            self._model = self._tok = self._desc_tok = None
+            return True
+        finally:
+            _TORCH_LOCK.release()
+
     def _load(self):
+        # Called under _TORCH_LOCK, which _unload takes too. About 4-5 GB on
+        # CPU, used by few voices: freed when idle (idle_models).
+        idle_models.touch("parler", self._unload)
         if self._model is not None:
             return
         import torch

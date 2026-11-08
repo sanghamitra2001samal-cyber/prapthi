@@ -14,6 +14,8 @@ Indic langs). TTS: the app's Parler engine (passed in as `tts_fn`).
 from __future__ import annotations
 
 import os
+
+import idle_models
 import subprocess
 import tempfile
 
@@ -41,8 +43,19 @@ IT2_LANG = {
 }
 
 
+def _drop(*names: str):
+    """An idle_models unload: forget these module globals. Callers keep their
+    own reference while they work, so a running job is never interrupted."""
+    def run() -> bool:
+        for n in names:
+            globals()[n] = None
+        return True
+    return run
+
+
 def _get_whisper():
     global _whisper
+    idle_models.touch("whisper-small", _drop("_whisper"))
     if _whisper is None:
         from faster_whisper import WhisperModel
         import torch
@@ -70,6 +83,7 @@ STT_ACCURATE_MODEL = os.environ.get("VOXFORGE_STT_ACCURATE_MODEL", "large-v3-tur
 
 def _get_stt():
     global _stt
+    idle_models.touch("stt", _drop("_stt"))
     if _stt is None:
         from faster_whisper import WhisperModel
         import torch
@@ -85,6 +99,7 @@ def _get_stt():
 
 def _get_mt():
     global _mt, _mt_tok
+    idle_models.touch("m2m100", _drop("_mt", "_mt_tok"))
     if _mt is None:
         from transformers import M2M100ForConditionalGeneration, M2M100Tokenizer
         _mt_tok = M2M100Tokenizer.from_pretrained("facebook/m2m100_418M")
@@ -109,6 +124,7 @@ def extract_audio(in_path: str, wav_path: str) -> None:
 
 def _get_stt_accurate():
     global _stt_accurate
+    idle_models.touch("stt-accurate", _drop("_stt_accurate"))
     if _stt_accurate is None:
         from faster_whisper import WhisperModel
         import torch
@@ -227,11 +243,14 @@ def transcribe(wav_path: str, language: str | None = None, vad: bool = True,
 
 
 def _get_it2():
-    """Lazy-load IndicTrans2 (en->Indic). Returns None if not accessible
-    (e.g. no HF token) — caller falls back to M2M-100."""
+    """Lazy-load IndicTrans2 (en->Indic). Returns (model, tokenizer,
+    processor), or None if not accessible (e.g. no HF token) — caller falls
+    back to M2M-100. The caller works from this tuple, never the globals,
+    so freeing it when idle cannot break a translation in progress."""
     global _it2, _it2_tok, _it2_ip, _it2_ok
     if _it2_ok is False:
         return None
+    idle_models.touch("indictrans2", _drop("_it2", "_it2_tok", "_it2_ip"))
     if _it2 is None:
         try:
             from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
@@ -246,19 +265,21 @@ def _get_it2():
             print(f"[dub] IndicTrans2 unavailable ({repr(e)[:60]}); using M2M-100")
             _it2_ok = False
             return None
-    return _it2
+    return _it2, _it2_tok, _it2_ip
 
 
 def translate(texts: list[str], src: str, tgt: str) -> list[str]:
     # Prefer IndicTrans2 for English -> Indic (best quality + Telugu/Assamese).
-    if (src or "en").startswith("en") and tgt in IT2_LANG and _get_it2() is not None:
+    it2 = _get_it2() if (src or "en").startswith("en") and tgt in IT2_LANG else None
+    if it2 is not None:
         import torch
-        b = _it2_ip.preprocess_batch(texts, src_lang="eng_Latn", tgt_lang=IT2_LANG[tgt])
-        enc = _it2_tok(b, truncation=True, padding="longest", return_tensors="pt")
+        model, tok, ip = it2
+        b = ip.preprocess_batch(texts, src_lang="eng_Latn", tgt_lang=IT2_LANG[tgt])
+        enc = tok(b, truncation=True, padding="longest", return_tensors="pt")
         with torch.no_grad():
-            g = _it2.generate(**enc, max_length=256, num_beams=5)
-        dec = _it2_tok.batch_decode(g, skip_special_tokens=True)
-        return _it2_ip.postprocess_batch(dec, lang=IT2_LANG[tgt])
+            g = model.generate(**enc, max_length=256, num_beams=5)
+        dec = tok.batch_decode(g, skip_special_tokens=True)
+        return ip.postprocess_batch(dec, lang=IT2_LANG[tgt])
     if tgt not in M2M_LANG:
         raise ValueError(
             f"target '{tgt}' needs IndicTrans2 (add an HF token to enable it)")
