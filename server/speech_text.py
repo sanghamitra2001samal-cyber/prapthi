@@ -349,7 +349,9 @@ class _Lang:
 
 
 # --------------------------------------------------------------------------- #
-# Tamil, Telugu, Bengali, Marathi. Cardinals come from AI4Bharat's tables;
+# Tamil, Telugu, Bengali, Marathi (6 Nov 2026), then Gujarati, Kannada,
+# Malayalam, Punjabi, Odia, Assamese. Cardinals come from AI4Bharat's tables
+# (Kannada's are built below: its table is wrong for 190 of 1-9999);
 # everything a sentence wraps around them (rupees, months, percent, the way a
 # time is said) is here, written the way it is read aloud, not as written in
 # a form. Bengali and Marathi count money and time like Hindi (साडे / সাড়ে).
@@ -415,21 +417,187 @@ _INDIC = {
                   "min": "मिनिटे", "mins": "मिनिटे", "sec": "सेकंद", "gb": "जीबी",
                   "mb": "एमबी", "°c": "डिग्री सेल्सिअस"},
     },
+    "gu": {
+        "rupee": "રૂપિયા", "rupee1": "રૂપિયો", "paise": "પૈસા",
+        "dollar": "ડૉલર", "cent": "સેન્ટ", "percent": "{n} ટકા",
+        "point": "પોઇન્ટ", "plus": "પ્લસ", "and": "અને",
+        "lakh": "લાખ", "crore": "કરોડ", "range": "{a} થી {b}",
+        "months": "જાન્યુઆરી ફેબ્રુઆરી માર્ચ એપ્રિલ મે જૂન જુલાઈ ઑગસ્ટ સપ્ટેમ્બર "
+                  "ઑક્ટોબર નવેમ્બર ડિસેમ્બર",
+        "day": ("સવારે", "બપોરે", "સાંજે", "રાત્રે"),
+        "units": {"km": "કિલોમીટર", "kg": "કિલો", "g": "ગ્રામ", "gm": "ગ્રામ",
+                  "cm": "સેન્ટિમીટર", "mm": "મિલિમીટર", "m": "મીટર",
+                  "ml": "મિલિલિટર", "l": "લિટર", "kmph": "કિલોમીટર પ્રતિ કલાક",
+                  "km/h": "કિલોમીટર પ્રતિ કલાક", "hrs": "કલાક", "hr": "કલાક",
+                  "min": "મિનિટ", "mins": "મિનિટ", "sec": "સેકન્ડ", "gb": "જીબી",
+                  "mb": "એમબી", "°c": "ડિગ્રી સેલ્સિયસ"},
+    },
+    "kn": {
+        "rupee": "ರೂಪಾಯಿ", "rupee1": "ರೂಪಾಯಿ", "paise": "ಪೈಸೆ",
+        "dollar": "ಡಾಲರ್", "cent": "ಸೆಂಟ್", "percent": "ಶೇಕಡಾ {n}",
+        "point": "ಪಾಯಿಂಟ್", "plus": "ಪ್ಲಸ್", "and": "ಮತ್ತು",
+        "lakh": "ಲಕ್ಷ", "crore": "ಕೋಟಿ", "range": "{a} ರಿಂದ {b}",
+        "months": "ಜನವರಿ ಫೆಬ್ರವರಿ ಮಾರ್ಚ್ ಏಪ್ರಿಲ್ ಮೇ ಜೂನ್ ಜುಲೈ ಆಗಸ್ಟ್ ಸೆಪ್ಟೆಂಬರ್ "
+                  "ಅಕ್ಟೋಬರ್ ನವೆಂಬರ್ ಡಿಸೆಂಬರ್",
+        "day": ("ಬೆಳಿಗ್ಗೆ", "ಮಧ್ಯಾಹ್ನ", "ಸಂಜೆ", "ರಾತ್ರಿ"),
+        "units": {"km": "ಕಿಲೋಮೀಟರ್", "kg": "ಕಿಲೋ", "g": "ಗ್ರಾಂ", "gm": "ಗ್ರಾಂ",
+                  "cm": "ಸೆಂಟಿಮೀಟರ್", "mm": "ಮಿಲಿಮೀಟರ್", "m": "ಮೀಟರ್",
+                  "ml": "ಮಿಲಿಲೀಟರ್", "l": "ಲೀಟರ್", "kmph": "ಕಿಲೋಮೀಟರ್ ವೇಗ",
+                  "km/h": "ಕಿಲೋಮೀಟರ್ ವೇಗ", "hrs": "ಗಂಟೆ", "hr": "ಗಂಟೆ",
+                  "min": "ನಿಮಿಷ", "mins": "ನಿಮಿಷ", "sec": "ಸೆಕೆಂಡ್", "gb": "ಜಿಬಿ",
+                  "mb": "ಎಂಬಿ", "°c": "ಡಿಗ್ರಿ ಸೆಲ್ಸಿಯಸ್"},
+    },
+    "ml": {
+        "rupee": "രൂപ", "rupee1": "രൂപ", "paise": "പൈസ",
+        "dollar": "ഡോളർ", "cent": "സെന്റ്", "percent": "{n} ശതമാനം",
+        "point": "പോയിന്റ്", "plus": "പ്ലസ്", "and": "ആൻഡ്",
+        "lakh": "ലക്ഷം", "crore": "കോടി", "range": "{a} മുതൽ {b} വരെ",
+        "months": "ജനുവരി ഫെബ്രുവരി മാർച്ച് ഏപ്രിൽ മേയ് ജൂൺ ജൂലൈ ഓഗസ്റ്റ് സെപ്റ്റംബർ "
+                  "ഒക്ടോബർ നവംബർ ഡിസംബർ",
+        "day": ("രാവിലെ", "ഉച്ചയ്ക്ക്", "വൈകുന്നേരം", "രാത്രി"),
+        "units": {"km": "കിലോമീറ്റർ", "kg": "കിലോ", "g": "ഗ്രാം", "gm": "ഗ്രാം",
+                  "cm": "സെന്റിമീറ്റർ", "mm": "മില്ലിമീറ്റർ", "m": "മീറ്റർ",
+                  "ml": "മില്ലിലിറ്റർ", "l": "ലിറ്റർ", "kmph": "കിലോമീറ്റർ വേഗത",
+                  "km/h": "കിലോമീറ്റർ വേഗത", "hrs": "മണിക്കൂർ", "hr": "മണിക്കൂർ",
+                  "min": "മിനിറ്റ്", "mins": "മിനിറ്റ്", "sec": "സെക്കൻഡ്", "gb": "ജിബി",
+                  "mb": "എംബി", "°c": "ഡിഗ്രി സെൽഷ്യസ്"},
+    },
+    "pa": {
+        "rupee": "ਰੁਪਏ", "rupee1": "ਰੁਪਈਆ", "paise": "ਪੈਸੇ",
+        "dollar": "ਡਾਲਰ", "cent": "ਸੈਂਟ", "percent": "{n} ਪ੍ਰਤੀਸ਼ਤ",
+        "point": "ਪੁਆਇੰਟ", "plus": "ਪਲੱਸ", "and": "ਅਤੇ",
+        "lakh": "ਲੱਖ", "crore": "ਕਰੋੜ", "range": "{a} ਤੋਂ {b}",
+        "months": "ਜਨਵਰੀ ਫ਼ਰਵਰੀ ਮਾਰਚ ਅਪ੍ਰੈਲ ਮਈ ਜੂਨ ਜੁਲਾਈ ਅਗਸਤ ਸਤੰਬਰ ਅਕਤੂਬਰ ਨਵੰਬਰ ਦਸੰਬਰ",
+        "day": ("ਸਵੇਰੇ", "ਦੁਪਹਿਰ", "ਸ਼ਾਮ", "ਰਾਤ"),
+        "units": {"km": "ਕਿਲੋਮੀਟਰ", "kg": "ਕਿੱਲੋ", "g": "ਗ੍ਰਾਮ", "gm": "ਗ੍ਰਾਮ",
+                  "cm": "ਸੈਂਟੀਮੀਟਰ", "mm": "ਮਿਲੀਮੀਟਰ", "m": "ਮੀਟਰ",
+                  "ml": "ਮਿਲੀਲੀਟਰ", "l": "ਲੀਟਰ", "kmph": "ਕਿਲੋਮੀਟਰ ਪ੍ਰਤੀ ਘੰਟਾ",
+                  "km/h": "ਕਿਲੋਮੀਟਰ ਪ੍ਰਤੀ ਘੰਟਾ", "hrs": "ਘੰਟੇ", "hr": "ਘੰਟੇ",
+                  "min": "ਮਿੰਟ", "mins": "ਮਿੰਟ", "sec": "ਸਕਿੰਟ", "gb": "ਜੀਬੀ",
+                  "mb": "ਐਮਬੀ", "°c": "ਡਿਗਰੀ ਸੈਲਸੀਅਸ"},
+    },
+    "or": {
+        "rupee": "ଟଙ୍କା", "rupee1": "ଟଙ୍କା", "paise": "ପଇସା",
+        "dollar": "ଡଲାର", "cent": "ସେଣ୍ଟ", "percent": "{n} ପ୍ରତିଶତ",
+        "point": "ଦଶମିକ", "plus": "ପ୍ଲସ", "and": "ଏବଂ",
+        "lakh": "ଲକ୍ଷ", "crore": "କୋଟି", "range": "{a} ରୁ {b}",
+        "months": "ଜାନୁଆରୀ ଫେବୃଆରୀ ମାର୍ଚ୍ଚ ଅପ୍ରେଲ ମେ ଜୁନ ଜୁଲାଇ ଅଗଷ୍ଟ ସେପ୍ଟେମ୍ବର "
+                  "ଅକ୍ଟୋବର ନଭେମ୍ବର ଡିସେମ୍ବର",
+        "day": ("ସକାଳ", "ମଧ୍ୟାହ୍ନ", "ସନ୍ଧ୍ୟା", "ରାତି"),
+        "units": {"km": "କିଲୋମିଟର", "kg": "କିଲୋ", "g": "ଗ୍ରାମ", "gm": "ଗ୍ରାମ",
+                  "cm": "ସେଣ୍ଟିମିଟର", "mm": "ମିଲିମିଟର", "m": "ମିଟର",
+                  "ml": "ମିଲିଲିଟର", "l": "ଲିଟର", "kmph": "କିଲୋମିଟର ପ୍ରତି ଘଣ୍ଟା",
+                  "km/h": "କିଲୋମିଟର ପ୍ରତି ଘଣ୍ଟା", "hrs": "ଘଣ୍ଟା", "hr": "ଘଣ୍ଟା",
+                  "min": "ମିନିଟ", "mins": "ମିନିଟ", "sec": "ସେକେଣ୍ଡ", "gb": "ଜିବି",
+                  "mb": "ଏମବି", "°c": "ଡିଗ୍ରୀ ସେଲସିୟସ"},
+    },
+    "as": {
+        "rupee": "টকা", "rupee1": "টকা", "paise": "পইচা",
+        "dollar": "ডলাৰ", "cent": "চেণ্ট", "percent": "{n} শতাংশ",
+        "point": "দশমিক", "plus": "প্লাছ", "and": "আৰু",
+        "lakh": "লাখ", "crore": "কোটি", "range": "{a}ৰ পৰা {b}লৈ",
+        "months": "জানুৱাৰী ফেব্ৰুৱাৰী মাৰ্চ এপ্ৰিল মে জুন জুলাই আগষ্ট ছেপ্তেম্বৰ "
+                  "অক্টোবৰ নৱেম্বৰ ডিচেম্বৰ",
+        "day": ("পুৱা", "দুপৰীয়া", "সন্ধিয়া", "ৰাতি"),
+        "units": {"km": "কিলোমিটাৰ", "kg": "কিলো", "g": "গ্ৰাম", "gm": "গ্ৰাম",
+                  "cm": "চেণ্টিমিটাৰ", "mm": "মিলিমিটাৰ", "m": "মিটাৰ",
+                  "ml": "মিলিলিটাৰ", "l": "লিটাৰ", "kmph": "কিলোমিটাৰ প্ৰতি ঘণ্টা",
+                  "km/h": "কিলোমিটাৰ প্ৰতি ঘণ্টা", "hrs": "ঘণ্টা", "hr": "ঘণ্টা",
+                  "min": "মিনিট", "mins": "মিনিট", "sec": "ছেকেণ্ড", "gb": "জিবি",
+                  "mb": "এমবি", "°c": "ডিগ্ৰী চেলছিয়াছ"},
+    },
 }
+# Languages added 6 Nov 2026 write the percent word in a template, since
+# Kannada says it first (ಶೇಕಡಾ ಇಪ್ಪತ್ತೈದು). The first four keep a bare word.
+for _v in _INDIC.values():
+    if "{n}" not in _v["percent"]:
+        _v["percent"] = "{n} " + _v["percent"]
+
+# Kannada cardinals are built here: AI4Bharat's Kannada table gives 190 of
+# 1-9999 the wrong word (83 reads as 82; 110-190 all read "ನೂ"; 250 reads
+# ಇನ್ನೂ, "still"). Ones join a ten by sandhi: ಇಪ್ಪತ್ತು + ಒಂದು = ಇಪ್ಪತ್ತೊಂದು,
+# ಇಪ್ಪತ್ತು + ಮೂರು = ಇಪ್ಪತ್ಮೂರು.
+_KN_ONES = ["ಸೊನ್ನೆ", "ಒಂದು", "ಎರಡು", "ಮೂರು", "ನಾಲ್ಕು", "ಐದು", "ಆರು", "ಏಳು", "ಎಂಟು", "ಒಂಬತ್ತು",
+            "ಹತ್ತು", "ಹನ್ನೊಂದು", "ಹನ್ನೆರಡು", "ಹದಿಮೂರು", "ಹದಿನಾಲ್ಕು", "ಹದಿನೈದು", "ಹದಿನಾರು",
+            "ಹದಿನೇಳು", "ಹದಿನೆಂಟು", "ಹತ್ತೊಂಬತ್ತು"]
+_KN_TENS = {2: "ಇಪ್ಪತ್ತು", 3: "ಮೂವತ್ತು", 4: "ನಲವತ್ತು", 5: "ಐವತ್ತು", 6: "ಅರವತ್ತು",
+            7: "ಎಪ್ಪತ್ತು", 8: "ಎಂಬತ್ತು", 9: "ತೊಂಬತ್ತು"}
+_KN_HUNDREDS = {1: "ನೂರು", 2: "ಇನ್ನೂರು", 3: "ಮುನ್ನೂರು", 4: "ನಾನೂರು", 5: "ಐನೂರು",
+                6: "ಆರುನೂರು", 7: "ಏಳುನೂರು", 8: "ಎಂಟುನೂರು", 9: "ಒಂಬೈನೂರು"}
+_KN_VOWEL_SIGN = {"ಒ": "ೊ", "ಎ": "ೆ", "ಐ": "ೈ", "ಆ": "ಾ", "ಏ": "ೇ"}
+
+
+def _kn_below_100(n: int) -> str:
+    if n < 20:
+        return _KN_ONES[n]
+    tens, ones = _KN_TENS[n // 10], n % 10
+    if not ones:
+        return tens
+    one = _KN_ONES[ones]
+    if one[0] in _KN_VOWEL_SIGN:                    # ಇಪ್ಪತ್ತ + ೊ + ಂದು
+        return tens[:-1] + _KN_VOWEL_SIGN[one[0]] + one[1:]
+    return tens[:-2] + one                          # ಇಪ್ಪತ್ + ಮೂರು
+
+
+def _kn_int(n: int) -> str:
+    if n < 100:
+        return _kn_below_100(n)
+    parts: list[str] = []
+    crore, n = divmod(n, 10_000_000)
+    lakh, n = divmod(n, 100_000)
+    thousand, rest = divmod(n, 1000)
+    # A scale word followed by more takes the genitive: ಸಾವಿರದ ಐನೂರು.
+    for count, word, joined in ((crore, "ಕೋಟಿ", "ಕೋಟಿ"), (lakh, "ಲಕ್ಷ", "ಲಕ್ಷದ"),
+                                (thousand, "ಸಾವಿರ", "ಸಾವಿರದ")):
+        if count:
+            more = bool(rest or (word == "ಕೋಟಿ" and (lakh or thousand))
+                        or (word == "ಲಕ್ಷ" and thousand))
+            parts.append(f"{_kn_int(count)} {joined if more else word}")
+    hundreds, below = divmod(rest, 100)
+    tail = _kn_below_100(below) if below else ""
+    if hundreds:
+        h = _KN_HUNDREDS[hundreds]
+        if tail:                                    # ನೂರು + ಐವತ್ತು = ನೂರೈವತ್ತು
+            sign = {**_KN_VOWEL_SIGN, "ಇ": "ಿ", "ಅ": ""}.get(tail[0])
+            tail = h[:-1] + (sign + tail[1:] if sign is not None else tail)
+        else:
+            tail = h
+    if tail:
+        parts.append(tail)
+    return " ".join(parts)
+
+
+# A Malayalam or Kannada half hour is one word: പത്ത് -> പത്തര, ಹತ್ತು -> ಹತ್ತೂವರೆ.
+def _half_past(code: str, hour: str) -> str:
+    if code == "ml":
+        return (hour[:-1] if hour.endswith("്") else hour) + "ര"
+    return (hour[:-1] + "ೂ" if hour.endswith("ು") else hour) + "ವರೆ"
+
+
+# Hindi-style quarter hours: (1:30, 2:30, x:30, x:15, x:45 of the next hour, other).
+_QUARTERS = {
+    "gu": ("દોઢ", "અઢી", "સાડા {h}", "સવા {h}", "પોણા {h}", "{h} ને {m}"),
+    "pa": ("ਡੇਢ", "ਢਾਈ", "ਸਾਢੇ {h}", "ਸਵਾ {h}", "ਪੌਣੇ {h}", "{h} ਵੱਜ ਕੇ {m} ਮਿੰਟ"),
+}
+# Bengali and Odia put a classifier on the hour (দশটা, ଦଶଟା) and merge it with
+# the one the customer wrote ("10:30 টায়", "10 ଟାରେ").
+_HOUR_CLASSIFIER = {"bn": "টা", "or": "ଟା"}
 # Bengali reads a date's day as an ordinal: পয়লা, দোসরা, পনেরোই, একুশে.
 _BN_DAY = {1: "পয়লা", 2: "দোসরা", 3: "তেসরা", 4: "চৌঠা"}
 # The year in hundreds, as said aloud: উনিশশো / एकोणीसशे / పందొమ్మిది వందల.
-_HUNDREDS_YEAR = {"bn": "{c}শো", "mr": "{c}शे", "te": "{c} వందల"}
+_HUNDREDS_YEAR = {"bn": "{c}শো", "mr": "{c}शे", "te": "{c} వందల", "gu": "{c} સો",
+                  "pa": "{c} ਸੌ", "or": "{c} ଶହ", "as": "{c} শ"}
 # "One" before a noun is its own word in Tamil and Telugu: ஒரு ரூபாய், ఒక రూపాయి.
-_ONE_BEFORE_NOUN = {"ta": "ஒரு", "te": "ఒక"}
+_ONE_BEFORE_NOUN = {"ta": "ஒரு", "te": "ఒక", "ml": "ഒരു"}
 # A noun after a Telugu number takes the oblique: వేలు -> వేల రూపాయలు.
 _TE_OBLIQUE = re.compile(r"(వందలు|వేలు|లక్షలు|కోట్లు)$")
-_INDIC_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯०१२३४५६७८९౦౧౨౩౪౫౬౭౮౯௦௧௨௩௪௫௬௭௮௯",
-                              "0123456789" * 4)
+_INDIC_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯०१२३४५६७८९౦౧౨౩౪౫౬౭౮౯௦௧௨௩௪௫௬௭௮௯"
+                              "૦૧૨૩૪૫૬૭૮૯೦೧೨೩೪೫೬೭೮೯൦൧൨൩൪൫൬൭൮൯੦੧੨੩੪੫੬੭੮੯୦୧୨୩୪୫୬୭୮୯",
+                              "0123456789" * 9)
 
 
 class _IndicLang:
-    """The _Lang interface for ta / te / bn / mr."""
+    """The _Lang interface for the languages in _INDIC."""
 
     hi = False
 
@@ -444,11 +612,15 @@ class _IndicLang:
         # number that long is an ID or account number: read it digit by digit.
         if n >= 10**9:
             return " ".join(self.int(int(d)) for d in str(n))
+        if self.code == "kn":
+            return _kn_int(n)
         words = _indic_num2words(n, lang=self.code).replace("\u200c", "")   # ZWNJ
         if self.code == "mr":
             words = words.replace("\u093c", "")    # Marathi writes हजार, not हज़ार
         elif self.code == "ta":
             words = words.replace("தொண்ணூரெட்டு", "தொண்ணூற்றெட்டு")   # 98, misspelt upstream
+        elif self.code == "as":
+            words = words.replace("র", "ৰ")        # Assamese ra; the table mixes in Bengali's
         # NFC: the tables spell some vowels decomposed (Telugu ై as ె + U+0C56),
         # which looks the same but is not the text an engine was trained on.
         return unicodedata.normalize("NFC", " ".join(words.split()))
@@ -478,7 +650,7 @@ class _IndicLang:
         return f"{amount} {word} {self.v['dollar'] if symbol == '$' else self.v['rupee']}"
 
     def percent(self, num: str) -> str:
-        return f"{self.decimal(num)} {self.v['percent']}"
+        return self.v["percent"].format(n=self.decimal(num))
 
     def decimal(self, num: str) -> str:
         num = num.replace(",", "")
@@ -501,9 +673,9 @@ class _IndicLang:
         if self.code == "bn":
             day = _BN_DAY.get(d) or self.int(d) + ("ই" if d <= 18 else "শে")
             return f"{day} {month}" + ("," + year if year else "")
-        if self.code == "mr":
+        if self.code in ("mr", "gu", "pa", "or", "as"):
             return f"{self.int(d)} {month}{year}"
-        return f"{month} {self.int(d)}" + ("," + year if year else "")    # ta, te
+        return f"{month} {self.int(d)}" + ("," + year if year else "")    # ta, te, kn, ml
 
     def time(self, h: int, m: int, ampm: str) -> str:
         ampm = ampm.lower().replace(".", "")
@@ -538,7 +710,28 @@ class _IndicLang:
                 spoken = f"पावणे {n(nxt)}"
             else:
                 spoken = f"{n(h12)} वाजून {n(m)} मिनिटे"
-        else:                                          # ta, te: "பத்து முப்பது"
+        elif self.code in _QUARTERS:
+            q = _QUARTERS[self.code]
+            if m == 0:
+                spoken = n(h12)
+            elif m == 30:
+                spoken = {1: q[0], 2: q[1]}.get(h12) or q[2].format(h=n(h12))
+            elif m == 15:
+                spoken = q[3].format(h=n(h12))
+            elif m == 45:
+                spoken = q[4].format(h=n(nxt))
+            else:
+                spoken = q[5].format(h=n(h12), m=n(m))
+        elif self.code == "or":
+            if m == 0:
+                spoken = f"{n(h12)}ଟା"
+            elif m == 30:
+                spoken = {1: "ଦେଢ଼ଟା", 2: "ଅଢ଼େଇଟା"}.get(h12, f"ସାଢ଼େ {n(h12)}ଟା")
+            else:
+                spoken = f"{n(h12)}ଟା {n(m)} ମିନିଟ"
+        elif self.code in ("ml", "kn") and m == 30:
+            spoken = _half_past(self.code, n(h12))
+        else:                                          # ta, te, kn, ml, as: "பத்து முப்பது"
             spoken = n(h12) if m == 0 else f"{n(h12)} {n(m)}"
         return f"\x03{part}\x03{spoken}" if part else spoken
 
@@ -548,8 +741,9 @@ class _IndicLang:
         if out.startswith("\x03"):
             _, part, rest = out.split("\x03", 2)
             out = rest if before.rstrip().endswith(part) else f"{part} {rest}"
-        if self.code == "bn" and out.endswith("টা") and re.match(r"\s*টা", after):
-            out = out[:-2] + "\x04"   # "সাড়ে দশটা" + " টায়" -> "সাড়ে দশটায়"
+        tag = _HOUR_CLASSIFIER.get(self.code)
+        if tag and out.endswith(tag) and re.match(r"\s*" + tag, after):
+            out = out[:-len(tag)] + "\x04"   # "সাড়ে দশটা" + " টায়" -> "সাড়ে দশটায়"
         return out
 
     def range(self, a: str, b: str) -> str:
@@ -577,11 +771,14 @@ _NUM = r"\d(?:[\d,]*\d)?(?:\.\d+)?"
 _PHONE = re.compile(r"(?<![\d.,])\+?\d{2,5}(?:[ -]\d{2,5}){1,4}(?!\d|[.,]\d)|(?<![\d.,])\+?\d{7,}(?!\d|[.,]\d)")
 _MONEY = re.compile(
     r"(₹|\bRs\.?|\bINR|\$)\s?(\d(?:[\d,]*\d)?)(?:\.(\d{1,2}))?(?!\d)"
-    r"(?:\s?(lakhs?|crores?|लाख|करोड़|कोटी|லட்சம்|கோடி|లక్షల|లక్షలు|లక్ష|కోట్ల|కోట్లు|కోటి|লাখ|কোটি|k)"
+    r"(?:\s?(lakhs?|crores?|लाख|करोड़|कोटी|லட்சம்|கோடி|లక్షల|లక్షలు|లక్ష|కోట్ల|కోట్లు|కోటి|লাখ|কোটি"
+    r"|લાખ|કરોડ|ಲಕ್ಷ|ಕೋಟಿ|ലക്ഷം|കോടി|ਲੱਖ|ਕਰੋੜ|ଲକ୍ଷ|କୋଟି|k)"
     r"(?![A-Za-z\u0900-\u0DFF]))?", re.IGNORECASE)
-_LAKH_WORDS = ("lakh", "लाख", "லட்ச", "లక్ష", "লাখ")
-_SAYS_RUPEES = re.compile(r"\s*(?:rupee|रुपय|रुपए|ரூபா|రూపా|টাকা)", re.IGNORECASE)
-_RUPEE_WORD = re.compile(r"\s(?:rupees?|रुपये|रुपया|ரூபாய்|రూపాయలు|రూపాయి|টাকা)(?=\s|$)")
+_LAKH_WORDS = ("lakh", "लाख", "லட்ச", "లక్ష", "লাখ", "લાખ", "ಲಕ್ಷ", "ലക്ഷ", "ਲੱਖ", "ଲକ୍ଷ")
+_SAYS_RUPEES = re.compile(r"\s*(?:rupee|रुपय|रुपए|ரூபா|రూపా|টাকা|રૂપિય|ರೂಪಾಯ|രൂപ|ਰੁਪ|ଟଙ୍କା|টকা)",
+                          re.IGNORECASE)
+_RUPEE_WORD = re.compile(r"\s(?:rupees?|रुपये|रुपया|ரூபாய்|రూపాయలు|రూపాయి|টাকা|રૂપિયા|રૂપિયો"
+                         r"|ರೂಪಾಯಿ|രൂപ|ਰੁਪਏ|ਰੁਪਈਆ|ଟଙ୍କା|টকা)(?=\s|$)")
 _MONEY_AFTER = re.compile(r"(?<![\d.])(\d(?:[\d,]*\d)?)(?:\.(\d{1,2}))?\s?(?:/-|₹)")
 _PERCENT = re.compile(r"(?<![\d.])(\d(?:[\d,]*\d)?(?:\.\d+)?)\s?%")
 _TIME = re.compile(r"(?<!\d)([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d)(?:\s?([ap]\.?m\.?)(?![a-z]))?", re.IGNORECASE)
@@ -624,7 +821,7 @@ def expand(text: str, lang: str) -> str:
 
 def _expand(text: str, lang: str) -> str:
     """Rewrite numbers, money, dates, times, units and (for Hindi) acronyms
-    into words for `lang` ("hi", "bho", "en", "ta", "te", "bn" or "mr").
+    into words for `lang`: "hi", "bho", "en", or a language in _INDIC.
     Other languages pass through."""
     lang = (lang or "").lower().split("-")[0]
     if not text:
@@ -796,7 +993,10 @@ def _expand(text: str, lang: str) -> str:
         t = re.sub("\x04\x02\\s*", "\x02", t)
     t = t.replace("\x01", "").replace("\x02", "")
     t = re.sub(r"(?<=[ap]\.m\.)\.", "", t)       # "at 7 p.m.." -> "at 7 p.m."
-    return re.sub(r"[ \t]{2,}", " ", t)
+    t = re.sub(r"[ \t]{2,}", " ", t)
+    # Gurmukhi ਫ਼ / ਜ਼ and the like are stored decomposed by NFC; keep every
+    # Indic result in one form so the cache and the engines see one spelling.
+    return unicodedata.normalize("NFC", t) if lang in _INDIC else t
 
 
 _FENCED = re.compile(r"\x01[^\x02]*\x02")

@@ -477,6 +477,110 @@ def _dev_to_telugu(word: str) -> str:
                    else chr(ord(ch) + 0x300) if ch in _DEV_LETTERS else ch for ch in word)
 
 
+# Gujarati, Kannada, Malayalam, Gurmukhi and Odia also sit at a fixed distance
+# from Devanagari; these are the letters that do not, or that the language
+# writes differently in English words.
+_OFFSET = {"gujr": 0x180, "knda": 0x380, "mlym": 0x400, "guru": 0x100, "orya": 0x200}
+_OFFSET_OVERRIDES = {
+    "gujr": {"\u093c": ""},                                  # ફ, ઝ: no nukta
+    "knda": {"ऑ": "ಆ", "ॉ": "ಾ", "ॅ": "ೆ", "ँ": "ಂ", "\u093c": ""},   # ಆಫೀಸ್, ಕಾಲ್
+    "mlym": {"ऑ": "ഓ", "ॉ": "ോ", "ॅ": "െ", "ौ": "ൗ", "ँ": "ം", "\u093c": ""},  # ഓഫീസ്, കോൾ
+    "guru": {"ऑ": "ਆ", "ॉ": "ਾ", "ॅ": "ੈ", "ृ": "੍ਰਿ", "ऋ": "ਰਿ", "ष": "ਸ਼", "ँ": "ਂ"},
+    "orya": {"ऑ": "ଅ", "ॉ": "", "ॅ": "େ", "व": "ଭ", "\u093c": ""},   # ଅଫିସ, କଲ: ଅ is already "o"
+}
+# Malayalam writes a nasal before a stop as that stop's nasal (അക്കൗണ്ട്, not
+# the anusvara), and doubles a lone voiceless stop between vowels, which it
+# would otherwise voice: ഫോട്ടോ, കമ്പ്യൂട്ടർ, as the language spells them.
+_ML_NASAL = {**dict.fromkeys("कखगघ", "ङ"), **dict.fromkeys("चछजझ", "ञ"),
+             **dict.fromkeys("टठडढ", "ण"), **dict.fromkeys("तथदध", "न"),
+             **dict.fromkeys("पफबभ", "म")}
+_ML_CHILLU = {"ന": "ൻ", "ല": "ൽ", "ര": "ർ", "ണ": "ൺ", "ള": "ൾ"}
+# English l and n after a back vowel take the retroflex chillu, as Malayalam
+# spells them: കോൾ, ഫുട്ബോൾ, ഫോൺ, ടൗൺ; elsewhere മൊബൈൽ, സ്റ്റേഷൻ.
+_ML_BACK_VOWEL = frozenset("ോൊൂുാൗഓഒഊഉആഔ")
+# Before these the consonant joins the next one instead (ന്റ, ല്ല, ണ്ട).
+_ML_NO_CHILLU_BEFORE = {"ന": "നതദറ", "ല": "ല", "ണ": "ണടഡ", "ള": "ള", "ര": ""}
+
+
+def _offset_script(dev: str, script: str) -> str:
+    over, shift = _OFFSET_OVERRIDES[script], _OFFSET[script]
+    out = []
+    for i, ch in enumerate(dev):
+        if ch == "\u093c" and script == "orya" and i and dev[i - 1] in "डढ":
+            out.append("\u0b3c")                          # ଡ଼ ଢ଼ are Odia letters
+        elif ch in over:
+            out.append(over[ch])
+        elif "\u0901" <= ch <= "\u094d":
+            out.append(chr(ord(ch) + shift))
+        else:
+            out.append(ch)          # markers, punctuation, the danda
+    return "".join(out)
+
+
+def _ml_prepare(dev: str) -> str:
+    dev = re.sub("ंग्?(?=\\s|$)", "ङ्", dev)        # മീട്ടിങ്, not മീട്ടിംഗ്
+    # z is സ and th is ത in Malayalam spellings of English: പ്ലീസ്, താങ്ക് യൂ.
+    dev = dev.replace("ज\u093c", "स").replace("थ", "त")
+    dev = re.sub("[ंँ](?=[" + "".join(_ML_NASAL) + "])",
+                 lambda m: _ML_NASAL[dev[m.end()]] + "्", dev)
+    out, n = [], len(dev)
+    for i, ch in enumerate(dev):
+        nxt = dev[i + 1] if i + 1 < n else ""
+        prev = dev[i - 1] if i else ""
+        if (ch in _VOICELESS_STOPS and prev and nxt
+                and (prev in _DEV_VOWEL_SIGNS or prev in _DEV_VOWELS or prev in _CONSONANTS
+                     or prev in _MARKERS)
+                and (nxt in _DEV_VOWEL_SIGNS or nxt in _CONSONANTS or nxt in _MARKERS)):
+            out.append(ch + "्" + ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _ml_finish(word: str) -> str:
+    """Final and pre-consonant n/l/r/ṇ/ḷ as chillu letters (ഓൺലൈൻ, കോൾ,
+    സർവീസ്), final m as anusvara (ടീം)."""
+    out = []
+    n = len(word)
+    i = 0
+    while i < n:
+        ch = word[i]
+        if ch in _ML_CHILLU and i + 1 < n and word[i + 1] == "്":
+            after = word[i + 2] if i + 2 < n else ""
+            if not after or (after.isalpha() and "\u0d15" <= after <= "\u0d39"
+                             and after not in _ML_NO_CHILLU_BEFORE[ch]):
+                back = i and word[i - 1] in _ML_BACK_VOWEL
+                if ch == "ല" and back:
+                    ch = "ള"
+                elif ch == "ന" and back and after in ("", "ല"):
+                    ch = "ണ"                                 # ഫോൺ, ഓൺലൈൻ
+                out.append(_ML_CHILLU[ch]); i += 2; continue
+        if ch == "മ" and word[i + 1:i + 2] == "്" and i + 2 == n:
+            out.append("ം"); i += 2; continue
+        out.append(ch); i += 1
+    return "".join(out)
+
+
+def _guru_finish(word: str) -> str:
+    """Gurmukhi writes no virama in a cluster except the subjoined ਰ ਹ ਵ; a
+    doubled consonant takes the addak (ਬੱਸ), and a nasal after a short vowel
+    is the tippi (ਮੀਟਿੰਗ), after a long one the bindi (ਬੈਂਕ)."""
+    word = re.sub("([\u0a15-\u0a39])\u0a4d\\1", "\u0a71\\1", word)
+    word = re.sub("\u0a4d(?![ਰਹ])", "", word)
+    # A y glide between vowels is a vowel letter in Gurmukhi: ਇੰਡੀਆ, ਵੀਡੀਓ, ਕੰਪਿਊਟਰ.
+    word = re.sub("ਿਯ([ਾੋ])", lambda m: "ੀ" + {"ਾ": "ਆ", "ੋ": "ਓ"}[m.group(1)], word)
+    word = re.sub("(?<=[\u0a15-\u0a39])ਯੂ", "ਿਊ", word)
+    return re.sub("(?<=[\u0a15-\u0a39\u0a3c\u0a3f\u0a41\u0a42ਅਇਉ])\u0a02", "\u0a70", word)
+
+
+def _orya_finish(word: str) -> str:
+    # Odia ଯ is "ja": y, and the ya-phala (ବ୍ୟାଙ୍କ), are ୟ.
+    return word.replace("\u0b2f", "\u0b5f")
+
+
+_FINISH = {"mlym": _ml_finish, "guru": _guru_finish, "orya": _orya_finish}
+
+
 def dev_to_script(dev: str, script: str) -> str:
     """Devanagari (with english_lexicon's vowel markers) in another script.
     Markers are left in place for the caller to fill."""
@@ -501,6 +605,14 @@ def dev_to_script(dev: str, script: str) -> str:
         return _dev_to_telugu(dev)
     if script == "taml":
         return _dev_to_tamil(dev)
+    if script in _OFFSET:
+        if script == "gujr":
+            dev = dev.replace("ज\u093c", "झ")              # Gujarati writes z as ઝ
+        elif script == "mlym":
+            dev = _ml_prepare(dev)
+        elif script == "orya":
+            dev = re.sub("ंग(्?)(?=\\s|$)", "ं", dev)          # ମିଟିଂ
+        return _offset_script(dev, script)
     return dev
 
 
@@ -514,6 +626,11 @@ _SCRIPTS = {
     "ta": ("taml", _TA_CONSONANTS, "\u0bcd"),
     "mr": ("deva", frozenset(), ""),
     "bn": ("beng", frozenset(), ""),
+    "gu": ("gujr", frozenset(), ""),
+    "kn": ("knda", frozenset(chr(c) for c in range(0x0C95, 0x0CBA)), "\u0ccd"),
+    "ml": ("mlym", frozenset(chr(c) for c in range(0x0D15, 0x0D3A)), "\u0d4d"),
+    "pa": ("guru", frozenset(), ""),
+    "or": ("orya", frozenset(chr(c) for c in range(0x0B15, 0x0B3A)) | {"\u0b5f"}, "\u0b4d"),
 }
 # Every voice of these languages, IndicF5 included: measured 6 Nov 2026, it
 # read English words better in its own script than in Devanagari (Bengali
@@ -523,6 +640,11 @@ _SCRIPT_VOICE = {
     "ta": re.compile(r"^(mms-tam|svara-ta|parler-ta|if5-ta)"),
     "mr": re.compile(r"^(svara-mr|parler-mr|mms-mar|if5-mr)"),
     "bn": _BENGALI_VOICE,
+    "gu": re.compile(r"^(mms-guj|svara-gu|parler-gu|if5-gu)"),
+    "kn": re.compile(r"^(mms-kan|svara-kn|parler-kn)"),
+    "ml": re.compile(r"^(mms-mal|svara-ml|parler-ml|ml_IN-)"),
+    "pa": re.compile(r"^(mms-pan|svara-pa|parler-pa)"),
+    "or": re.compile(r"^(mms-ory|svara-or|parler-or)"),
 }
 
 
@@ -531,38 +653,42 @@ def _english_word(tok: str, lang: str) -> str:
     import english_lexicon
     script, consonants, virama = _SCRIPTS[lang]
 
+    post = _FINISH.get(script)
+
+    def done(out: str) -> str:
+        return " ".join(post(w) for w in out.split(" ")) if post else out
+
     def finish(dev: str) -> str:
         out = english_lexicon.fill_marks(dev_to_script(dev, script), script)
-        return " ".join(_close_word(w, consonants, virama) for w in out.split(" "))
+        return done(" ".join(_close_word(w, consonants, virama) for w in out.split(" ")))
 
     acr = _acronym_devanagari(tok)
     if acr:
         return finish(acr)
     low = tok.lower()
-    # Telugu and Tamil say every written vowel, and the hand-made spellings
-    # assume Hindi's silent ones (ऑनलाइन would read "aa-na-laa-in"), so the
-    # pronunciation dictionary comes first there; Marathi and Bengali read
-    # like Hindi, so the hand-made list wins and the dictionary fills gaps.
     # The hand-made list holds the Indian way of saying a word (मोबाइल, not
-    # the dictionary's American "mobul"), so it comes first. Telugu and Tamil
-    # say every written vowel, so its words get Hindi's silent ones marked.
+    # the dictionary's American "mobul"), so it comes first. Scripts whose
+    # readers say every written vowel get Hindi's silent ones marked
+    # (ऑनलाइन would read "aa-na-laa-in").
     if low in _ENGLISH_LOANS:
         loan = unicodedata.normalize("NFD", _ENGLISH_LOANS[low])
-        if script in ("telu", "taml"):
+        if script in english_lexicon.SAYS_EVERY_VOWEL:
             loan = _hindi_schwa_deletion(loan)
         return finish(loan)
-    return english_lexicon.pronounce(low, script) or finish(_translit_latin(tok))
+    said = english_lexicon.pronounce(low, script)
+    return done(said) if said else finish(_translit_latin(tok))
 
 
 def script_language(voice_id: str) -> str:
-    """'te', 'ta' or 'mr' for a voice whose English words need its own script."""
+    """The language code (a key of _SCRIPTS) of a voice whose English words
+    need its own script, or ""."""
     v = (voice_id or "").replace("server:", "")
     return next((lang for lang, rx in _SCRIPT_VOICE.items() if rx.match(v)), "")
 
 
 def to_script(text: str, lang: str) -> str:
-    """Latin words in `text` rewritten in the script of `lang` (te / ta / mr /
-    bn). Text already in that script is left exactly as it is."""
+    """Latin words in `text` rewritten in the script of `lang` (a key of
+    _SCRIPTS). Text already in that script is left exactly as it is."""
     if lang not in _SCRIPTS or not _HAS_LATIN.search(text):
         return text
     # Only the Latin runs: _TOKEN's other runs are the customer's own text, and

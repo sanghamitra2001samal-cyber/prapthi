@@ -42,6 +42,25 @@ EXPAND = [
      "मीटिंग पंधरा ऑगस्ट दोन हजार सव्वीस रोजी सकाळी साडेदहा वाजता होईल."),
     ("mr", "दुपारी 1:30 वाजता", "दुपारी दीड वाजता"),
     ("mr", "१५/०८/२०२६ रोजी", "पंधरा ऑगस्ट दोन हजार सव्वीस रोजी"),
+    # Gujarati, Kannada, Malayalam, Punjabi, Odia, Assamese
+    ("gu", "મીટિંગ 15/08/2026 ના રોજ સવારે 10:30 વાગે થશે.",
+     "મીટિંગ પંદર ઑગસ્ટ બે હજાર છવ્વીસ ના રોજ સવારે સાડા દસ વાગે થશે."),
+    ("gu", "બપોરે 1:30 વાગે", "બપોરે દોઢ વાગે"),
+    ("kn", "ಇಂದು 25% ರಿಯಾಯಿತಿ", "ಇಂದು ಶೇಕಡಾ ಇಪ್ಪತ್ತೈದು ರಿಯಾಯಿತಿ"),
+    ("kn", "₹250 ಮಾತ್ರ", "ಇನ್ನೂರೈವತ್ತು ರೂಪಾಯಿ ಮಾತ್ರ"),        # the package says ಇನ್ನೂ ("still")
+    ("kn", "83 ಜನ", "ಎಂಬತ್ಮೂರು ಜನ"),                          # the package says 82
+    ("kn", "ಬೆಳಿಗ್ಗೆ 10:30", "ಬೆಳಿಗ್ಗೆ ಹತ್ತೂವರೆ"),
+    ("ml", "വില ₹1,500, പിന്നെ", "വില ആയിരത്തി അഞ്ഞൂറ് രൂപ, പിന്നെ"),
+    ("ml", "₹1 മാത്രം", "ഒരു രൂപ മാത്രം"),
+    ("ml", "രാവിലെ 10:30", "രാവിലെ പത്തര"),
+    ("pa", "ਮੀਟਿੰਗ 15/08/2026 ਨੂੰ ਸਵੇਰੇ 10:30 ਵਜੇ", "ਮੀਟਿੰਗ ਪੰਦਰਾਂ ਅਗਸਤ ਦੋ ਹਜ਼ਾਰ ਛੱਬੀ ਨੂੰ ਸਵੇਰੇ ਸਾਢੇ ਦਸ ਵਜੇ"),
+    ("pa", "1998 ਵਿੱਚ", "ਉੱਨੀ ਸੌ ਅਠੱਨਵੇ ਵਿੱਚ"),
+    ("or", "ସକାଳ 10:30 ଟାରେ", "ସକାଳ ସାଢ଼େ ଦଶଟାରେ"),
+    ("or", "ଦାମ ₹1,500", "ଦାମ ଏକ ହଜାର ପାଞ୍ଚ ଶହ ଟଙ୍କା"),
+    ("as", "দাম ₹30", "দাম ত্ৰিশ টকা"),                     # ৰ, not Bengali র
+    # 10+ digits used to crash the request (the package iterates an int).
+    ("ta", "எண் 12345678901", "எண் ஒன்று இரண்டு மூன்று நான்கு ஐந்து ஆறு ஏழு எட்டு ஒன்பது பூஜ்ஜியம் ஒன்று"),
+    ("bn", "5000000000 টাকা", "পাঁচ শূন্য শূন্য শূন্য শূন্য শূন্য শূন্য শূন্য শূন্য শূন্য টাকা"),
 ]
 
 SCRIPT = [
@@ -51,12 +70,33 @@ SCRIPT = [
      "தேங்க் யூ, எங்கள் டீம் மண்டே முதல் ஆன்லைன் மீட்டிங் நடத்தும்."),
     ("mr", "तुमची order उद्या delivery होईल", "तुमची ऑर्डर उद्या डिलिवरी होईल"),
     ("te", "పూర్తిగా తెలుగు వాక్యం.", "పూర్తిగా తెలుగు వాక్యం."),        # native text untouched
+    # The customer's own words before the first English one stay as written.
+    ("ta", "இந்த order நல்ல deal", "இந்த ஆர்டர் நல்ல டீல்"),
+    ("te", "ఇక్కడ మీ order ఉంది", "ఇక్కడ మీ ఆర్డర్ ఉంది"),
+    ("bn", "যদি আপনার order আসে", "যদি আপনার অর্ডর আসে"),
+    ("gu", "તમારો order કાલે delivery થશે", "તમારો ઑર્ડર કાલે ડિલિવરી થશે"),
+    ("kn", "Thank you, ನಿಮ್ಮ bank account", "ಥ್ಯಾಂಕ್ ಯೂ, ನಿಮ್ಮ ಬ್ಯಾಂಕ್ ಅಕೌಂಟ್"),
+    ("ml", "ദയവായി email നോക്കൂ, പിന്നെ office ലേക്ക് call ചെയ്യൂ",
+     "ദയവായി ഈമേൽ നോക്കൂ, പിന്നെ ഓഫിസ് ലേക്ക് കോൾ ചെയ്യൂ"),
+    ("pa", "ਤੁਹਾਡਾ online order", "ਤੁਹਾਡਾ ਆਨਲਾਈਨ ਆਰਡਰ"),
+    ("or", "ଆପଣଙ୍କ mobile phone", "ଆପଣଙ୍କ ମୋବାଇଲ୍ ଫୋନ୍"),
 ]
-OTHER_SCRIPTS = {"te": "[ऀ-৿஀-௿]", "ta": "[ऀ-৿ఀ-౿]",
-                 "mr": "[ঀ-৿஀-౿]", "bn": "[ऀ-ॿ஀-౿]"}
+# Every Indic block except the language's own (Assamese shares Bengali's).
+_BLOCKS = {"deva": "ऀ-ॿ", "beng": "ঀ-৿", "guru": "਀-੿", "gujr": "઀-૿", "orya": "଀-୿",
+           "taml": "஀-௿", "telu": "ఀ-౿", "knda": "ಀ-೿", "mlym": "ഀ-ൿ"}
+_OWN = {"te": "telu", "ta": "taml", "mr": "deva", "bn": "beng", "gu": "gujr",
+        "kn": "knda", "ml": "mlym", "pa": "guru", "or": "orya"}
+OTHER_SCRIPTS = {lang: "[" + "".join(r for b, r in _BLOCKS.items() if b != own) + "]"
+                 for lang, own in _OWN.items()}
 WORDS = ("email office call meeting please check mobile phone bank account password online order "
          "delivery thank you Monday WhatsApp OTP SBI app link update Google team manager free video "
-         "photo computer internet class data India").split()
+         "photo computer internet class data India service football station school").split()
+
+
+def test_kannada_numbers_are_distinct():
+    """Each number its own words: the upstream table gave 83 and 82 the same."""
+    words = [speech_text._kn_int(n) for n in range(1, 20000)]
+    assert len(set(words)) == len(words)
 
 
 def test_expand():
@@ -80,6 +120,6 @@ def test_no_stray_script():
 
 
 if __name__ == "__main__":
-    test_expand(); test_script(); test_no_stray_script()
+    test_expand(); test_script(); test_no_stray_script(); test_kannada_numbers_are_distinct()
     print(f"ok: {len(EXPAND)} number cases, {len(SCRIPT)} script cases, "
           f"{len(WORDS) * len(OTHER_SCRIPTS)} words checked for stray script")

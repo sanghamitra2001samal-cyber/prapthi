@@ -17,7 +17,8 @@ and Tamil say every vowel that is written, so their words get explicit viramas
 wherever the sound has none.
 
 Public: `pronounce(word, script)` -> the word in `script` ("deva", "beng",
-"telu", "taml"), or None if the dictionary does not know it.
+"telu", "taml", "gujr", "knda", "mlym", "guru", "orya"), or None if the
+dictionary does not know it.
 """
 
 from __future__ import annotations
@@ -88,7 +89,15 @@ _MARKS = {
     "beng": {_AE: ("্যা", "অ্যা"), _AY: ("াই", "আই"), _AW: ("াউ", "আউ"), _EH: ("ে", "এ"), _W: ("ওয়", "ওয়")},
     "telu": {_AE: ("్యా", "యా"), _AY: ("ై", "ఐ"), _AW: ("ౌ", "ఔ"), _EH: ("ె", "ఎ"), _W: ("వ", "వ")},
     "taml": {_AE: ("ே", "ஆ"), _AY: ("ை", "ஐ"), _AW: ("ௌ", "ஔ"), _EH: ("ெ", "எ"), _W: ("வ", "வ")},
+    # As each language writes English (બેંક, ಬ್ಯಾಂಕ್, ബാങ്ക്, ਬੈਂਕ, ବ୍ୟାଙ୍କ).
+    "gujr": {_AE: ("ે", "એ"), _AY: ("ાઇ", "આઇ"), _AW: ("ાઉ", "આઉ"), _EH: ("ે", "એ"), _W: ("વ", "વ")},
+    "knda": {_AE: ("್ಯಾ", "ಆ"), _AY: ("ೈ", "ಐ"), _AW: ("ೌ", "ಔ"), _EH: ("ೆ", "ಎ"), _W: ("ವ", "ವ")},
+    "mlym": {_AE: ("ാ", "ആ"), _AY: ("ൈ", "ഐ"), _AW: ("ൗ", "ഔ"), _EH: ("െ", "എ"), _W: ("വ", "വ")},
+    "guru": {_AE: ("ੈ", "ਐ"), _AY: ("ਾਈ", "ਆਈ"), _AW: ("ਾਊ", "ਆਊ"), _EH: ("ੈ", "ਐ"), _W: ("ਵ", "ਵ")},
+    "orya": {_AE: ("୍ୟା", "ଆ"), _AY: ("ାଇ", "ଆଇ"), _AW: ("ାଉ", "ଆଉ"), _EH: ("େ", "ଏ"), _W: ("ୱ", "ୱ")},
 }
+# Scripts whose readers say every written vowel: a final consonant needs a virama.
+SAYS_EVERY_VOWEL = frozenset({"telu", "taml", "knda", "mlym", "orya"})
 
 
 def _devanagari(phones: list[str], keep_final_virama: bool) -> str:
@@ -145,7 +154,7 @@ def pronounce(word: str, script: str) -> str | None:
     phones = phones.split() if phones else _load().get(w)
     if not phones:
         return None
-    dev = _devanagari(phones, keep_final_virama=script in ("telu", "taml"))
+    dev = _devanagari(phones, keep_final_virama=script in SAYS_EVERY_VOWEL)
     from hinglish import dev_to_script            # hinglish imports us only lazily
     return fill_marks(dev_to_script(dev, script), script)
 
