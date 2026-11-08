@@ -13,14 +13,22 @@ const LANG_NAMES: Record<string, string> = {
   ro: 'Romanian', ru: 'Russian', sa: 'Sanskrit', sk: 'Slovak', sl: 'Slovenian',
   sr: 'Serbian', sv: 'Swedish', sw: 'Swahili', ta: 'Tamil', te: 'Telugu',
   tr: 'Turkish', uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Chinese',
+  // Already in the catalogue but missing here, so they showed as codes.
+  kk: 'Kazakh', lb: 'Luxembourgish', mai: 'Maithili',
+  // Added 8 Nov 2026.
+  ur: 'Urdu', bgc: 'Haryanvi', mag: 'Magahi', gbm: 'Garhwali', kru: 'Kurukh',
+  sck: 'Sadri', xnr: 'Kangri', bfy: 'Bagheli', mup: 'Malvi', hoc: 'Ho',
+  unr: 'Mundari', bg: 'Bulgarian', sq: 'Albanian', eu: 'Basque', et: 'Estonian',
+  cy: 'Welsh',
 };
 
 // Country names for the few languages that ship in multiple regional accents.
 const REGION_NAMES: Record<string, string> = {
   US: 'United States', GB: 'United Kingdom', IN: 'India', ES: 'Spain',
   MX: 'Mexico', AR: 'Argentina', BR: 'Brazil', PT: 'Portugal', CN: 'China',
+  PK: 'Pakistan',
 };
-const MULTI_REGION = new Set(['en', 'es', 'pt']);
+const MULTI_REGION = new Set(['en', 'es', 'pt', 'ur']);
 
 /** "es-ES" -> "Spanish (Spain)", "hi-IN" -> "Hindi", "ta" -> "Tamil" */
 export function langLabel(code: string): string {
