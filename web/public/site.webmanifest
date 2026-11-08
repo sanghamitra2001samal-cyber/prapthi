@@ -7,6 +7,6 @@
   "background_color": "#3a0d2a",
   "theme_color": "#3a0d2a",
   "icons": [
-    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/brand/prapthi-logo.png", "sizes": "624x624", "type": "image/png", "purpose": "any" }
   ]
 }

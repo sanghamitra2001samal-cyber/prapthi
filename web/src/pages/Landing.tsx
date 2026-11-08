@@ -584,7 +584,7 @@ function Footer({ authed }: { authed: boolean }) {
           {/* brand + newsletter + social */}
           <motion.div variants={fadeItem}>
             <Link to="/" className="group flex items-center gap-2">
-              <img src="/logo.png" alt="" className="h-8 w-8 rounded-md bg-white/95 object-contain p-0.5 transition-all group-hover:drop-shadow-[0_0_12px_rgba(124,169,255,0.7)]" />
+              <img src="/brand/prapthi-logo.png" alt="" className="h-8 w-8 rounded-md bg-white/95 object-contain p-0.5 transition-all group-hover:drop-shadow-[0_0_12px_rgba(124,169,255,0.7)]" />
               <span className="text-lg font-bold tracking-tight">Prapthi Ai</span>
             </Link>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">
@@ -718,7 +718,7 @@ function Navbar({ authed }: { authed: boolean }) {
     >
       <div className={`${WRAP} mx-auto flex items-center justify-between rounded-[22px] px-5 py-3.5 transition-all duration-300 md:px-7 ${scrolled ? 'vf-glass-strong' : 'bg-transparent'}`}>
         <Link to="/" className="flex items-center gap-2 text-white">
-          <img src="/logo.png" alt="" className="h-8 w-8 rounded-md bg-white/95 object-contain p-0.5" />
+          <img src="/brand/prapthi-logo.png" alt="" className="h-8 w-8 rounded-md bg-white/95 object-contain p-0.5" />
           <span className="text-lg font-bold tracking-tight">Prapthi Ai</span>
         </Link>
         <nav className="hidden items-center gap-9 lg:flex">

@@ -11,6 +11,16 @@ api.prapthi.ai, prapthi.ai {
 
 	handle_path /app/* {
 		root * /home/apple/prapthi/web-dist-app
+		# 8 Nov 2026. Built files carry a hash of their content in the name, so
+		# a given name never changes: cache them for a year.
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		# Everything else (index.html behind every studio route, the manifest,
+		# icons) is re-checked on every visit: with no header at all, browsers
+		# kept the old studio for hours after a deploy. A re-check that finds
+		# nothing new is a 304 thanks to the ETag.
+		@unhashed not path /assets/*
+		header @unhashed Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
