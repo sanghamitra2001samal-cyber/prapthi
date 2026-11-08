@@ -118,15 +118,69 @@ def get(voice_id, text, rate, pitch, volume, fmt) -> tuple[bytes, str] | None:
     return None
 
 
+# Takes no one should hear twice. A cached file is served for every later
+# request with the same text, so a bad take kept here is permanent.
+#
+# * Too short: Chatterbox once failed mid-sentence under GPU pressure and the
+#   0.2-0.9 s stub was served for days (Aug 2026). Speech runs 12-18
+#   characters a second; anything under a third of the slowest reading of a
+#   25+ character text is a fragment.
+# * Too long: a runaway take that never stops. Measured 8 Nov 2026 on 74
+#   voices across 56 languages: normal takes run 0.04-0.17 s of audio per
+#   character (Chinese is the densest); chatterbox-fr-camille read a 65
+#   character sentence for 37.1 s (0.57 s per character). The limit, 4 s +
+#   0.35 s per character, slower if the customer slowed the voice, is twice
+#   the slowest normal take.
+#
+# The guard was lost in the move off AWS (it was never committed); this
+# restores it and adds the runaway check. The chant voice is exempt: chanting
+# is meant to be slow.
+_REFUSED: dict[str, None] = {}          # keys whose WAV master was refused
+
+
+def _wav_seconds(audio: bytes) -> float | None:
+    """Duration from the header's byte rate and the file size (some engines
+    write a placeholder data length, so the size is the reliable part)."""
+    if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+        return None
+    byte_rate = int.from_bytes(audio[28:32], "little")
+    return (len(audio) - 44) / byte_rate if byte_rate else None
+
+
+def implausible(voice_id: str, text: str, rate, seconds: float) -> str:
+    """Why a take of `seconds` for `text` should not be kept, or ""."""
+    if str(voice_id).startswith("vagdhenu"):
+        return ""
+    n = len((text or "").strip())
+    speed = max(float(rate or 1.0), 0.25)
+    if n >= 25 and seconds < n / 18 / 3 / speed:
+        return f"too short ({seconds:.1f}s for {n} characters)"
+    if seconds > (4 + 0.35 * n) / min(speed, 1.0):
+        return f"too long ({seconds:.1f}s for {n} characters)"
+    return ""
+
+
 def put(voice_id, text, rate, pitch, volume, audio: bytes, mime: str) -> None:
     if not _ENABLED:
         return
     ext = _EXT.get(mime)
     if not ext:
         return
+    k = _key(voice_id, text, rate, pitch, volume)
+    if ext == "wav":
+        secs = _wav_seconds(audio)
+        why = implausible(voice_id, text, rate, secs) if secs is not None else ""
+        if why:
+            _REFUSED[k] = None
+            if len(_REFUSED) > 1000:
+                _REFUSED.pop(next(iter(_REFUSED)))
+            print(f"[cache] not keeping a {voice_id} take: {why}", flush=True)
+            return
+        _REFUSED.pop(k, None)
+    elif k in _REFUSED:
+        return                       # the mp3 made from a refused master
     try:
         _DIR.mkdir(exist_ok=True)
-        k = _key(voice_id, text, rate, pitch, volume)
         (_DIR / f"{k}.{ext}").write_bytes(audio)
         _evict()
     except OSError:
