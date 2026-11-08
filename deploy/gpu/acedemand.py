@@ -19,10 +19,10 @@ ACE-Step service to 8013.
   * After GPUSWAP_IDLE with nothing arriving, ACE-Step is stopped and IndicF5
     comes back.
 
-While ACE-Step holds the GPU the IndicF5 and Kokoro services are down, and the
-app box falls back to its own CPU copies — slower, but they answer. Kokoro is
-parked too because ACE-Step needs ~10 GB: with Kokoro's 1.2 GB still resident
-the card would be about 20 MB short.
+While ACE-Step holds the GPU the resident voice services (GPUSWAP_RESIDENT:
+IndicF5, and Parler or Kokoro where the box runs them) are down, and the app
+box falls back to its own CPU copies — slower, but they answer. They all step
+aside because ACE-Step needs ~10 GB and grows into whatever is free.
 
 Adapted from gpuswap.py, which did the same for the Sanskrit chant voice; the
 VRAM-release wait below is the part that matters and is kept as it was.
@@ -41,9 +41,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ACE_PORT, ACE_REAL = 8003, 8013
 IF5_HEALTH = "http://127.0.0.1:8004/health"
-KOKORO_HEALTH = "http://127.0.0.1:8005/health"
-# The voice services that live on the GPU between songs.
-RESIDENT = ("if5", "kokoro")
+# The voice services that live on the GPU between songs, and where each says it
+# is ready. Set per box: GPUSWAP_RESIDENT=if5,parler (8 Nov 2026). IndicF5 must
+# come back for the switch to count; the others only cost speed if they don't.
+HEALTH = {"if5": IF5_HEALTH,
+          "kokoro": "http://127.0.0.1:8005/health",
+          "parler": "http://127.0.0.1:8007/health"}
+RESIDENT = tuple(u.strip() for u in os.environ.get("GPUSWAP_RESIDENT", "if5").split(",")
+                 if u.strip() in HEALTH)
 # The service answers on the port a few seconds before the model is in VRAM,
 # so wait for this rather than for a bare 200 — otherwise the first request
 # after the GPU comes back pays the warm-up (about 12s).
@@ -118,13 +123,15 @@ def _park_voices() -> None:
 
 
 def _restore_voices() -> bool:
-    """Bring the voice services back; True once IndicF5 is serving. Kokoro is
-    waited for too, but its absence only costs speed, never an answer."""
+    """Bring the voice services back; True once IndicF5 is serving. The others
+    are waited for too, but their absence only costs speed, never an answer:
+    the app box falls back to its own CPU copies."""
     for unit in RESIDENT:
         systemctl("start", unit)
     ok = _wait_ready(IF5_HEALTH, IF5_WARM, IF5_READY_TIMEOUT)
-    if not _wait_ready(KOKORO_HEALTH, IF5_WARM, 120):
-        log("Kokoro did not come back up — the app box renders it on CPU")
+    for unit in RESIDENT:
+        if unit != "if5" and not _wait_ready(HEALTH[unit], IF5_WARM, 120):
+            log(f"{unit} did not come back up — the app box renders it on CPU")
     return ok
 
 
@@ -149,7 +156,7 @@ def switch_to(target: str) -> bool:
             _mode = "if5"
             return False
     else:
-        log("returning the GPU to IndicF5 and Kokoro")
+        log(f"returning the GPU to {', '.join(RESIDENT)}")
         systemctl("stop", "acestep")
         wait_for_vram_release(before)
         if not _restore_voices():

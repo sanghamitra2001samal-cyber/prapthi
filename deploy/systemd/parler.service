@@ -1,0 +1,17 @@
+[Unit]
+Description=Prapthi Indic Parler-TTS (93 HD voices) on the GPU
+After=network-online.target
+
+[Service]
+User=ubuntu
+Environment=PARLER_HOST=0.0.0.0
+Environment=PARLER_PORT=8007
+Environment=HF_HUB_OFFLINE=1
+Environment=TOKENIZERS_PARALLELISM=false
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ExecStart=/home/ubuntu/parlervenv/bin/python /home/ubuntu/parler_service.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
