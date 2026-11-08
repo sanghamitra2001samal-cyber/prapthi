@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# Rents a spot RTX PRO 6000 by the hour for Studio Clone training (Qwen3-TTS
+# fine-tuning), under the GPU account only (deploy/gcp-gpu/g: hudsundm@gmail.com,
+# project prapthi-gpu-dbefff). Nothing here touches production; `baseline` only
+# calls IndicF5 on the serving GPU box. You pay while the VM exists: `down` deletes it.
+#
+#   trainbox up [MACHINE]        create (default g4-standard-48: one full GPU, 96 GB) or restart it
+#   trainbox setup               driver, voice_clone_lab, Qwen3-TTS weights (~15-20 min)
+#   trainbox train SPK FILE LANG [EPOCHS] [BATCH] --consent
+#                                upload a 5-15 min recording and train in tmux; LANG = hi, en, te...
+#                                --consent: the speaker gave written permission for this clone
+#   trainbox logs SPK            follow a training run
+#   trainbox baseline SPK        render today's IndicF5 clone from the same reference, for comparison
+#   trainbox score SPK           score every system and print the report
+#   trainbox pull SPK            copy clips + report to ~/prapthi-training/SPK (never into the repo: it is public)
+#   trainbox save SPK EPOCH      keep that epoch's checkpoint in the private bucket before `down`
+#   trainbox status | ssh | down --yes
+#
+# Or train on the serving L4 itself, in the night window, with no rented VM:
+#   trainbox night-setup         install the trainer beside the live engines (no downtime)
+#   trainbox night-train SPK FILE|prepared|trained LANG [MODEL] [EPOCHS] --consent [--now]
+#                                upload, then run nightrun.sh at the next 21:00 UTC (2:30 IST),
+#                                or immediately with --now. Pauses svara, chant and songs meanwhile.
+#                                `trained` re-renders + re-scores existing checkpoints, no training.
+#   trainbox night-syspin SPK [MINUTES]   prepare SPK from SYSPIN Hindi (CC-BY-4.0), no recording needed
+#   trainbox night-status SPK    where the run is, and whether the engines came back
+#   trainbox night-pull SPK      copy clips + report to ~/prapthi-training/SPK
+#   trainbox night-clean SPK [KEEP_EPOCH]   remove the voice's data from the serving box
+#
+# Spot VMs can be reclaimed by Google; this one then stops (disk kept) and `up`
+# restarts it. --max-run-duration stops it after 12 h of running, in case it is forgotten.
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+G="$HERE/../g"
+VM=prapthi-train ZONE=asia-south1-c TAG=prapthi-train FW=train-ssh-from-mac
+SERVE_VM=prapthi-gpu SERVE_IP=35.244.48.2
+KEY="$HOME/.ssh/prapthi-gcp-gpu"
+CONF_DIR="$HOME/.config/gcloud-hudsundm"
+KH="$CONF_DIR/${VM}_known_hosts" SERVE_KH="$CONF_DIR/${SERVE_VM}_known_hosts"
+BUCKET=gs://prapthi-gpu-dbefff-voices
+log() { echo "[$(date -u +%H:%M:%S)] $*"; }
+die() { echo "trainbox: $*" >&2; exit 1; }
+
+ip_of() { "$G" compute instances describe "$VM" --zone "$ZONE" \
+    --format='value(networkInterfaces[0].accessConfigs[0].natIP)'; }
+state() { "$G" compute instances describe "$VM" --zone "$ZONE" --format='value(status)' 2>/dev/null || true; }
+SSHO=(-o ConnectTimeout=15 -o ServerAliveInterval=30 -o StrictHostKeyChecking=yes -i "$KEY")
+box()   { ssh "${SSHO[@]}" -o UserKnownHostsFile="$KH" "ubuntu@$(ip_of)" "$@"; }
+boxcp() { scp -q "${SSHO[@]}" -o UserKnownHostsFile="$KH" "$@"; }
+serve()   { ssh "${SSHO[@]}" -o UserKnownHostsFile="$SERVE_KH" "ubuntu@$SERVE_IP" "$@"; }
+servecp() { scp -q "${SSHO[@]}" -o UserKnownHostsFile="$SERVE_KH" "$@"; }
+spk_ok() { [[ "${1:-}" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]] || die "speaker name must be lowercase letters, digits, - or _"; }
+
+# Host keys come from the VM's guest attributes over the authenticated API, so the
+# first ssh is already verified. Rewritten on every start because the IP changes.
+pin_hostkey() {
+    local ip keys=""
+    ip=$(ip_of)
+    for _ in $(seq 60); do
+        keys=$("$G" compute instances get-guest-attributes "$VM" --zone "$ZONE" \
+            --query-path=hostkeys/ --format='value(key,value)' 2>/dev/null || true)
+        [ -n "$keys" ] && break; sleep 5
+    done
+    [ -n "$keys" ] || die "VM never published its host keys"
+    echo "$keys" | awk -v ip="$ip" '{print ip, $1, $2}' > "$KH"
+    for _ in $(seq 30); do box true 2>/dev/null && { log "ssh ok: $ip"; return; }; sleep 5; done
+    die "ssh to $ip did not come up"
+}
+
+cmd_up() {
+    local mt="${1:-g4-standard-48}" st myip keyfile out
+    myip=$(curl -fsS -m10 https://checkip.amazonaws.com | tr -d '[:space:]')
+    if "$G" compute firewall-rules describe "$FW" >/dev/null 2>&1; then
+        "$G" compute firewall-rules update "$FW" --source-ranges "$myip/32" --quiet
+    else
+        "$G" compute firewall-rules create "$FW" --network default --direction INGRESS \
+            --allow tcp:22 --source-ranges "$myip/32" --target-tags "$TAG" --quiet
+    fi
+    st=$(state)
+    case "$st" in
+        RUNNING) log "already running" ;;
+        TERMINATED|STOPPED) log "restarting stopped VM"; "$G" compute instances start "$VM" --zone "$ZONE" --quiet ;;
+        "")
+            keyfile=$(mktemp); echo "ubuntu:$(cat "$KEY.pub")" > "$keyfile"
+            for n in $(seq 20); do
+                if out=$("$G" compute instances create "$VM" --zone "$ZONE" --machine-type "$mt" \
+                        --provisioning-model SPOT --instance-termination-action STOP \
+                        --max-run-duration 12h --maintenance-policy TERMINATE \
+                        --image-family ubuntu-2204-lts --image-project ubuntu-os-cloud \
+                        --boot-disk-size 200GB --boot-disk-type hyperdisk-balanced \
+                        --tags "$TAG" --scopes storage-rw \
+                        --metadata-from-file ssh-keys="$keyfile" \
+                        --metadata enable-guest-attributes=TRUE,block-project-ssh-keys=TRUE 2>&1); then
+                    log "created $mt in $ZONE"; break
+                fi
+                case "$out" in
+                    *STOCKOUT*|*RESOURCE_POOL_EXHAUSTED*|*"does not have enough resources"*)
+                        log "no spot stock (try $n/20), retrying in 90 s"; sleep 90 ;;
+                    *) rm -f "$keyfile"; echo "$out" >&2; die "create failed" ;;
+                esac
+            done
+            rm -f "$keyfile"
+            [ -n "$(state)" ] || die "gave up: no spot capacity in $ZONE right now"
+            ;;
+        *) die "VM is $st; wait and retry" ;;
+    esac
+    pin_hostkey
+}
+
+cmd_setup() {
+    box 'mkdir -p ~/train ~/incoming ~/ab'
+    boxcp "$HERE"/{setup.sh,train_voice.sh,ab_tools.py,sentences.json} "ubuntu@$(ip_of):train/"
+    box 'sudo bash ~/train/setup.sh 2>&1 | tee ~/setup.log; test -f ~/.SETUP_DONE'
+}
+
+cmd_train() {
+    local consent=0 a=()
+    for x in "$@"; do [ "$x" = --consent ] && consent=1 || a+=("$x"); done
+    [ $consent = 1 ] || die "add --consent only if the speaker gave written permission to clone their voice"
+    local spk="${a[0]:-}" file="${a[1]:-}" lang="${a[2]:-}" ep="${a[3]:-5}" bs="${a[4]:-8}"
+    spk_ok "$spk"; [ -f "$file" ] || die "no such recording: $file"
+    [[ "$lang" =~ ^[a-z]{2,3}$ ]] || die "LANG must be a Whisper code such as hi, en, te"
+    box test -f .SETUP_DONE || die "run: trainbox setup"
+    [[ "$ep$bs" =~ ^[0-9]+$ ]] || die "EPOCHS and BATCH must be numbers"
+    local ext="${file##*.}"; ext=$(echo "$ext" | tr -cd 'a-zA-Z0-9')
+    boxcp "$file" "ubuntu@$(ip_of):incoming/$spk.$ext"     # fixed name: nothing user-typed reaches the remote shell
+    box "tmux new-session -d -s train-$spk 'bash ~/train/train_voice.sh $spk ~/incoming/$spk.$ext $lang $ep $bs 2>&1 | tee ~/train-$spk.log'"
+    log "training $spk in tmux on the VM. Follow it: trainbox logs $spk"
+}
+
+cmd_logs() { spk_ok "${1:-}"; box "tail -n 40 -f ~/train-$1.log"; }
+
+cmd_baseline() {
+    local spk="${1:-}" tmp; spk_ok "$spk"
+    box test -f "ab/$spk/reference.json" || die "train $spk first (it writes the shared reference)"
+    tmp=$(mktemp -d)
+    boxcp "ubuntu@$(ip_of):ab/$spk/reference.wav" "ubuntu@$(ip_of):ab/$spk/reference.json" "$tmp/"
+    serve "mkdir -p ~/ab/$spk"
+    servecp "$tmp"/reference.{wav,json} "ubuntu@$SERVE_IP:ab/$spk/"
+    servecp "$HERE"/{baseline_if5.py,sentences.json} "ubuntu@$SERVE_IP:ab/"
+    # A song borrows the GPU from IndicF5 for a few minutes; wait for it to be back.
+    serve 'for i in $(seq 60); do curl -s -m3 http://127.0.0.1:8004/health | grep -q "\"loaded\": true" && exit 0; sleep 10; done; exit 1' \
+        || die "IndicF5 on the serving box is not loaded"
+    serve "python3 ~/ab/baseline_if5.py ~/ab/$spk ~/ab/sentences.json"
+    servecp -r "ubuntu@$SERVE_IP:ab/$spk/indicf5" "$tmp/"
+    boxcp -r "$tmp/indicf5" "ubuntu@$(ip_of):ab/$spk/"
+    serve "rm -rf ~/ab/$spk"          # the speaker's voice does not stay on the serving box
+    rm -rf "$tmp"
+    log "baseline in place. Next: trainbox score $spk"
+}
+
+cmd_score() { spk_ok "${1:-}"; box "cd ~/vcl && . .venv/bin/activate && python ~/train/ab_tools.py score ~/ab/$1 ~/train/sentences.json"; }
+
+cmd_pull() {
+    local spk="${1:-}" dst; spk_ok "$spk"; dst="$HOME/prapthi-training/$spk"
+    mkdir -p "$dst"; chmod 700 "$HOME/prapthi-training"
+    boxcp -r "ubuntu@$(ip_of):ab/$spk/." "$dst/"
+    log "copied to $dst (report.md inside)"
+}
+
+cmd_save() {
+    local spk="${1:-}" ep="${2:-}" ck; spk_ok "$spk"; [[ "$ep" =~ ^[0-9]+$ ]] || die "EPOCH must be a number"
+    ck="vcl/outputs/checkpoints/$spk/checkpoint-epoch-$ep"
+    box test -f "$ck/config.json" || die "no such checkpoint: $ck"
+    "$G" storage buckets describe "$BUCKET" >/dev/null 2>&1 || "$G" storage buckets create "$BUCKET" \
+        --location asia-south1 --uniform-bucket-level-access --public-access-prevention
+    box "gcloud storage cp -r ~/$ck $BUCKET/$spk/"
+    log "saved $BUCKET/$spk/checkpoint-epoch-$ep"
+}
+
+cmd_status() {
+    "$G" compute instances list --filter="name=$VM" \
+        --format='table(name,zone.basename(),status,machineType.basename(),scheduling.provisioningModel,lastStartTimestamp)'
+    [ "$(state)" = RUNNING ] && box 'nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader; tmux ls 2>/dev/null || echo "no training running"' || true
+}
+
+cmd_down() {
+    [ "${1:-}" = --yes ] || die "this deletes the VM and its disk, including any checkpoint not kept with 'save'. Rerun: trainbox down --yes"
+    [ -n "$(state)" ] || { log "no VM to delete"; return; }
+    "$G" compute instances delete "$VM" --zone "$ZONE" --quiet
+    rm -f "$KH"
+    log "deleted $VM; billing for it has stopped"
+}
+
+cmd_night-setup() {
+    serve 'mkdir -p ~/train ~/incoming ~/ab'
+    servecp "$HERE"/{setup.sh,train_voice.sh,nightrun.sh,ab_tools.py,baseline_if5.py,sentences.json} "ubuntu@$SERVE_IP:train/"
+    serve 'chmod +x ~/train/*.sh; sudo bash ~/train/setup.sh > ~/setup.log 2>&1; rc=$?; tail -n 25 ~/setup.log; test $rc = 0 -a -f ~/.SETUP_DONE'
+}
+
+cmd_night-train() {
+    local consent=0 now=0 a=()
+    for x in "$@"; do case "$x" in --consent) consent=1 ;; --now) now=1 ;; *) a+=("$x") ;; esac; done
+    [ $consent = 1 ] || die "add --consent only if the speaker gave written permission to clone their voice"
+    local spk="${a[0]:-}" file="${a[1]:-}" lang="${a[2]:-}" model="${a[3]:-1.7b}" ep="${a[4]:-5}"
+    spk_ok "$spk"; [ "$file" = prepared ] || [ "$file" = trained ] || [ -f "$file" ] || die "no such recording: $file"
+    [[ "$lang" =~ ^[a-z]{2,3}$ ]] || die "LANG must be a Whisper code such as hi, en, te"
+    [[ "$model" =~ ^(1\.7b|0\.6b)$ ]] || die "MODEL must be 1.7b or 0.6b"
+    [[ "$ep" =~ ^[0-9]+$ ]] || die "EPOCHS must be a number"
+    serve test -f .SETUP_DONE || die "run: trainbox night-setup"
+    local src=prepared
+    if [ "$file" = trained ]; then
+        src=trained
+        serve "ls -d vcl/outputs/checkpoints/$spk/checkpoint-* >/dev/null" || die "no checkpoints for $spk"
+    elif [ "$file" != prepared ]; then
+        local ext="${file##*.}"; ext=$(echo "$ext" | tr -cd 'a-zA-Z0-9')
+        servecp "$file" "ubuntu@$SERVE_IP:incoming/$spk.$ext"; src="/home/ubuntu/incoming/$spk.$ext"
+    else
+        serve test -f "vcl/data/voices/$spk/transcripts/transcripts.jsonl" || die "nothing prepared for $spk"
+    fi
+    local run="/home/ubuntu/train/nightrun.sh $spk $src $lang $model $ep 1"
+    serve "sudo systemctl reset-failed prapthi-train-$spk 2>/dev/null; true"
+    if [ $now = 1 ]; then
+        serve "sudo systemd-run --unit=prapthi-train-$spk --collect $run"
+        log "started now on the serving box. Follow: trainbox night-status $spk"
+    else
+        local when; when=$(python3 -c "
+import datetime as d; n=d.datetime.now(d.timezone.utc); t=n.replace(hour=21,minute=0,second=0,microsecond=0)
+print((t if n<t else t+d.timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S'))")
+        serve "sudo systemd-run --unit=prapthi-train-$spk --collect --on-calendar='$when UTC' --timer-property=AccuracySec=1s $run"
+        log "scheduled for $when UTC on the serving box. Check: trainbox night-status $spk"
+    fi
+}
+
+cmd_night-syspin() {
+    local spk="${1:-}" min="${2:-12}"; spk_ok "$spk"; [[ "$min" =~ ^[0-9]+$ ]] || die "MINUTES must be a number"
+    servecp "$HERE/prep_syspin.py" "ubuntu@$SERVE_IP:train/"
+    serve "cd ~/vcl && . .venv/bin/activate && python -c 'import pyarrow' 2>/dev/null || pip install -q pyarrow; python ~/train/prep_syspin.py $spk $min"
+}
+
+cmd_night-status() {
+    spk_ok "${1:-}"
+    serve "systemctl list-timers --all --no-pager 'prapthi-train-$1*' | head -3; systemctl is-active prapthi-train-$1.service 2>/dev/null; echo; cat ~/train-$1.status 2>/dev/null; tail -n 15 ~/train-$1.log 2>/dev/null; echo; nvidia-smi --query-gpu=memory.used --format=csv,noheader"
+}
+
+cmd_night-pull() {
+    local spk="${1:-}" dst; spk_ok "$spk"; dst="$HOME/prapthi-training/$spk"
+    serve test -f "ab/$spk/.DONE" || die "the run for $spk has not finished"
+    mkdir -p "$dst"; chmod 700 "$HOME/prapthi-training"
+    servecp -r "ubuntu@$SERVE_IP:ab/$spk/." "$dst/"
+    servecp "ubuntu@$SERVE_IP:train-$spk.log" "$dst/"
+    log "copied to $dst (report.md inside)"
+}
+
+cmd_night-clean() {
+    local spk="${1:-}" keep="${2:-}"; spk_ok "$spk"
+    [ -z "$keep" ] || [[ "$keep" =~ ^[0-9]+$ ]] || die "KEEP_EPOCH must be a number"
+    serve "systemctl is-active -q prapthi-train-$spk.service" && die "a run for $spk is in progress"
+    serve "rm -rf ~/ab/$spk ~/vcl/data/voices/$spk ~/vcl/config/$spk.yaml ~/incoming/$spk.*
+           cd ~/vcl/outputs/checkpoints/$spk 2>/dev/null && for c in checkpoint-*; do
+               [ \"\$c\" = \"checkpoint-epoch-$keep\" ] || rm -rf \"\$c\"; done; true"
+    log "removed $spk's recordings and clips from the serving box${keep:+ (kept epoch $keep)}"
+}
+
+c="${1:-}"; shift || true
+case "$c" in
+    up|setup|train|logs|baseline|score|pull|save|status|down|night-setup|night-train|night-syspin|night-status|night-pull|night-clean) "cmd_$c" "$@" ;;
+    ssh) box "$@" ;;
+ *) awk 'NR>1 && !/^#/{exit} NR>1' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
