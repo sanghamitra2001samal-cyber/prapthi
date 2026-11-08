@@ -270,6 +270,10 @@ export function CreateSong({ onView }: { onView: (v: string) => void }) {
               <p className="mt-2 text-xs text-[var(--color-muted)]">
                 Composing music + emotional vocals — this can take a minute.
               </p>
+              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                If no one has made music in the last few minutes, the music engine first
+                warms up, which adds about 2–3 minutes. Please keep this page open.
+              </p>
             </>
           )}
           {done && (
@@ -621,6 +625,9 @@ export function CreateSong({ onView }: { onView: (v: string) => void }) {
           </button>
           <p className="text-center text-xs text-[var(--color-muted)]">
             AI beat + your emotional voice performing the lyrics. Fully private, no third-party API.
+          </p>
+          <p className="text-center text-xs text-[var(--color-muted)]">
+            The first song after a quiet spell takes about 2–3 extra minutes while the music engine warms up.
           </p>
         </div>
       )}
