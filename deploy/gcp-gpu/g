@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# gcloud for the GPU account only. Keeps its own config folder, so signing in here
+# never switches the account that production commands (prapthiai@gmail.com) use.
+#
+#   deploy/gcp-gpu/g login        sign in as hudsundm@gmail.com in the browser
+#   deploy/gcp-gpu/g <gcloud args> any gcloud command, refused under another account
+set -euo pipefail
+ACCOUNT="hudsundm@gmail.com"
+export CLOUDSDK_CONFIG="$HOME/.config/gcloud-hudsundm"
+mkdir -p "$CLOUDSDK_CONFIG"; chmod 700 "$CLOUDSDK_CONFIG"
+
+if [ "${1:-}" = login ]; then
+    gcloud auth login "$ACCOUNT" --brief
+    gcloud config set account "$ACCOUNT" >/dev/null
+    echo "signed in as $(gcloud config get-value account 2>/dev/null)"
+    exit 0
+fi
+
+who=$(gcloud config get-value account 2>/dev/null || true)
+[ "$who" = "$ACCOUNT" ] || { echo "STOPPED: this config is signed in as '${who:-nobody}', expected $ACCOUNT. Run: $0 login" >&2; exit 1; }
+exec gcloud "$@"

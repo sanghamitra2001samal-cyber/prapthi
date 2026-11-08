@@ -93,6 +93,11 @@ export function SoundEffects() {
           {busy ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
           {busy ? 'Generating…' : 'Generate sound'}
         </button>
+        <p className="-mt-2 text-center text-xs text-[var(--color-muted)]">
+          {busy
+            ? 'If the sound engine was idle, it warms up first, which adds about 2–3 minutes. Please keep this page open.'
+            : 'The first sound after a quiet spell takes about 2–3 extra minutes while the engine warms up.'}
+        </p>
 
         {job?.status === 'done' && jobId && (
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">

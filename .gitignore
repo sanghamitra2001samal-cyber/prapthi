@@ -46,3 +46,6 @@ __pycache__/
 
 # Local tooling
 .claude/launch.json
+
+# Audio the app generates at runtime (customer content; never commit)
+server/audiobooks/

@@ -148,7 +148,7 @@ export function AuthScreen({ initialView = 'login' }: { initialView?: View }) {
           className="z-10 w-full max-w-xs space-y-8"
         >
           <motion.div variants={item} className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5" />
+            <img src="/brand/prapthi-logo.png" alt="" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5" />
             <span className="text-xl font-semibold tracking-tight">Prapthi Ai</span>
           </motion.div>
 
@@ -179,7 +179,7 @@ export function AuthScreen({ initialView = 'login' }: { initialView?: View }) {
         >
           {/* mobile brand */}
           <Link to="/" className="flex items-center gap-2 lg:hidden">
-            <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg bg-white object-contain p-0.5" />
+            <img src="/brand/prapthi-logo.png" alt="" className="h-8 w-8 rounded-lg bg-white object-contain p-0.5" />
             <span className="text-lg font-semibold tracking-tight">Prapthi Ai</span>
           </Link>
 

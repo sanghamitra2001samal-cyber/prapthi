@@ -255,19 +255,24 @@ export function Dashboard() {
 /*  Floating glass icon dock (desktop)                                 */
 /* ------------------------------------------------------------------ */
 function DockButton({ icon: Icon, label, active, soon, onClick }: { icon: Icon; label: string; active?: boolean; soon?: boolean; onClick: () => void }) {
+  // The name lives on the button itself: a styled tooltip used to sit beside
+  // it, but the dock's scrolling <nav> clips anything that overflows sideways,
+  // so it never showed, and screen readers heard an unnamed button (8 Nov 2026).
+  // The native title tooltip cannot be clipped.
+  const name = soon ? `${label} · Coming soon` : label;
   return (
     <button
       onClick={onClick}
-      className={`group relative grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-all duration-200 ${
+      aria-label={name}
+      title={name}
+      aria-current={active ? 'page' : undefined}
+      className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-all duration-200 ${
         active
           ? 'bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-hover)] text-white shadow-[0_8px_22px_-8px_var(--color-accent)]'
           : 'text-[var(--color-muted)] hover:-translate-y-0.5 hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]'
       } ${soon && !active ? 'opacity-45' : ''}`}
     >
-      <Icon size={19} />
-      <span className="pointer-events-none absolute left-full z-50 ml-3 hidden whitespace-nowrap rounded-lg bg-[var(--color-surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg)] shadow-lg ring-1 ring-[var(--color-border)] group-hover:block">
-        {soon ? `${label} · Coming soon` : label}
-      </span>
+      <Icon size={19} aria-hidden />
     </button>
   );
 }
@@ -292,7 +297,7 @@ function Dock({
     <>
     <aside className="vf-theme-anim fixed inset-y-3 left-3 z-40 hidden w-[68px] flex-col items-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/85 p-2 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.7)] backdrop-blur-xl md:flex">
       <button onClick={() => navigate('/dashboard')} className="mb-1 grid h-11 w-11 place-items-center rounded-xl" aria-label="Home">
-        <img src="/logo.png" alt="Prapthi Ai" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5 shadow-[0_4px_16px_-6px_var(--color-accent)] ring-1 ring-[var(--color-accent)]/30" />
+        <img src="/brand/prapthi-logo.png" alt="Prapthi Ai" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5 shadow-[0_4px_16px_-6px_var(--color-accent)] ring-1 ring-[var(--color-accent)]/30" />
       </button>
 
       <div className="my-1 h-px w-8 bg-[var(--color-border)]" />
@@ -388,7 +393,7 @@ function MobileMenu({
       <aside className={`absolute inset-y-0 left-0 flex w-72 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] p-3 transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="mb-2 flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5" />
+            <img src="/brand/prapthi-logo.png" alt="" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5" />
             <span className="font-bold tracking-tight">Prapthi Ai</span>
           </div>
           <button onClick={onClose} className="rounded-md p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"><X size={18} /></button>

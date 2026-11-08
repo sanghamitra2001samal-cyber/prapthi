@@ -19,8 +19,10 @@ ACE-Step service to 8013.
   * After GPUSWAP_IDLE with nothing arriving, ACE-Step is stopped and IndicF5
     comes back.
 
-While ACE-Step holds the GPU the IndicF5 service is down, and the app box falls
-back to its own CPU IndicF5 — slower, but it answers.
+While ACE-Step holds the GPU the IndicF5 and Kokoro services are down, and the
+app box falls back to its own CPU copies — slower, but they answer. Kokoro is
+parked too because ACE-Step needs ~10 GB: with Kokoro's 1.2 GB still resident
+the card would be about 20 MB short.
 
 Adapted from gpuswap.py, which did the same for the Sanskrit chant voice; the
 VRAM-release wait below is the part that matters and is kept as it was.
@@ -39,6 +41,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ACE_PORT, ACE_REAL = 8003, 8013
 IF5_HEALTH = "http://127.0.0.1:8004/health"
+KOKORO_HEALTH = "http://127.0.0.1:8005/health"
+# The voice services that live on the GPU between songs.
+RESIDENT = ("if5", "kokoro")
 # The service answers on the port a few seconds before the model is in VRAM,
 # so wait for this rather than for a bare 200 — otherwise the first request
 # after the GPU comes back pays the warm-up (about 12s).
@@ -107,6 +112,22 @@ def _wait_ready(url: str, needle: str | None, timeout: int) -> bool:
     return False
 
 
+def _park_voices() -> None:
+    for unit in RESIDENT:
+        systemctl("stop", unit)
+
+
+def _restore_voices() -> bool:
+    """Bring the voice services back; True once IndicF5 is serving. Kokoro is
+    waited for too, but its absence only costs speed, never an answer."""
+    for unit in RESIDENT:
+        systemctl("start", unit)
+    ok = _wait_ready(IF5_HEALTH, IF5_WARM, IF5_READY_TIMEOUT)
+    if not _wait_ready(KOKORO_HEALTH, IF5_WARM, 120):
+        log("Kokoro did not come back up — the app box renders it on CPU")
+    return ok
+
+
 def switch_to(target: str) -> bool:
     """Put the GPU into `target` mode. Caller must hold the lock."""
     global _mode
@@ -115,25 +136,23 @@ def switch_to(target: str) -> bool:
     before = gpu_used_mib()
     if target == "ace":
         log("handing the GPU to ACE-Step")
-        systemctl("stop", "if5")
+        _park_voices()
         wait_for_vram_release(before)
         systemctl("start", "acestep")
         ok = _wait_ready(f"http://127.0.0.1:{ACE_REAL}/health", None,
                          ACE_READY_TIMEOUT)
         if not ok:
-            log("ACE-Step did not come up; giving the GPU back to IndicF5")
+            log("ACE-Step did not come up; giving the GPU back to the voices")
             systemctl("stop", "acestep")
             wait_for_vram_release(gpu_used_mib())
-            systemctl("start", "if5")
-            _wait_ready(IF5_HEALTH, IF5_WARM, IF5_READY_TIMEOUT)
+            _restore_voices()
             _mode = "if5"
             return False
     else:
-        log("returning the GPU to IndicF5")
+        log("returning the GPU to IndicF5 and Kokoro")
         systemctl("stop", "acestep")
         wait_for_vram_release(before)
-        systemctl("start", "if5")
-        if not _wait_ready(IF5_HEALTH, IF5_WARM, IF5_READY_TIMEOUT):
+        if not _restore_voices():
             log("IndicF5 did not come back up — the app box will fall back to CPU")
             _mode = "none"
             return False
@@ -221,10 +240,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     global _mode
-    # Start from the resting state: ACE-Step down, IndicF5 holding the GPU.
+    # Start from the resting state: ACE-Step down, the voices holding the GPU.
     systemctl("stop", "acestep")
-    systemctl("start", "if5")
-    _mode = "if5" if _wait_ready(IF5_HEALTH, IF5_WARM, IF5_READY_TIMEOUT) else "none"
+    _mode = "if5" if _restore_voices() else "none"
     log(f"starting in mode {_mode} ({gpu_used_mib()} MiB in use)")
     threading.Thread(target=idle_watcher, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", ACE_PORT), Handler)

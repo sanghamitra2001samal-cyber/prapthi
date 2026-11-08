@@ -1,0 +1,12 @@
+[
+  {"id": "hi1", "lang": "hi", "text": "नमस्ते, आज मौसम बहुत सुहाना है और हम बाहर घूमने जा रहे हैं।"},
+  {"id": "hi2", "lang": "hi", "text": "हमारी कंपनी ने इस साल तीन नई सेवाएँ शुरू की हैं।"},
+  {"id": "hi3", "lang": "hi", "text": "क्या आप कल सुबह दस बजे मीटिंग में आ सकते हैं?"},
+  {"id": "hi4", "lang": "hi", "text": "कृपया अपने सवाल ईमेल पर भेज दीजिए, आपको जल्द ही जवाब मिलेगा।"},
+  {"id": "en1", "lang": "en", "text": "Hello, the weather is lovely today and we are heading out for a walk."},
+  {"id": "en2", "lang": "en", "text": "Our company launched three new services this year."},
+  {"id": "en3", "lang": "en", "text": "Could you join the meeting tomorrow at ten in the morning?"},
+  {"id": "te1", "lang": "te", "text": "నమస్కారం, ఈ రోజు వాతావరణం చాలా బాగుంది."},
+  {"id": "te2", "lang": "te", "text": "మా కంపెనీ ఈ సంవత్సరం మూడు కొత్త సేవలను ప్రారంభించింది."},
+  {"id": "te3", "lang": "te", "text": "దయచేసి మీ ప్రశ్నలను ఈమెయిల్ ద్వారా పంపండి."}
+]
