@@ -123,6 +123,9 @@
     busy(verifyForm, true);
     try {
       await call('/auth/verify', { email, code });
+      /* Counted here, not at the form: an account exists once its email is
+         verified. No address goes to Analytics, only that it happened. */
+      window.gtag?.('event', 'sign_up', { method: 'email' });
       busy(verifyForm, false);
       show('login');
       const lf = $('[data-auth-step=login]');
