@@ -1,0 +1,23 @@
+# Deliberately no [Install] section: acedemand.service owns the lifecycle of
+# this unit, as it does for if5. It starts Kokoro at boot and stops it for the
+# few minutes a song needs the card: ACE-Step needs ~10 GB, and with Kokoro's
+# 1.2 GB resident the card would be ~20 MB short. While it is down the app box
+# renders Kokoro on its own CPU.
+[Unit]
+Description=Prapthi Kokoro (live speech) on the GPU
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+# The security group restricts 8005 to the app box, so binding wide is fine.
+Environment=KOKORO_HOST=0.0.0.0
+Environment=KOKORO_PORT=8005
+Environment=KOKORO_MODELS=/home/ubuntu/kokoro_models
+# The service puts its CUDA libraries on LD_LIBRARY_PATH itself and refuses
+# to start if it is not on the GPU.
+ExecStart=/home/ubuntu/kokorovenv/bin/python /home/ubuntu/kokoro_service.py
+Restart=on-failure
+RestartSec=10

@@ -725,6 +725,36 @@ class KokoroEngine:
                 v: (v, "en-US", _guess_gender(v), "en-us") for v in sorted(avail)
             }
 
+    # The same model on the GPU box (deploy/gpu/kokoro_service.py): ~140 ms for
+    # a short phrase against 0.6-1 s here, which is the difference live speech
+    # needs. It is away while a song borrows the card, so this box keeps its
+    # own copy and stops asking for a while after a failure, rather than
+    # paying a timeout on every request.
+    _GPU_RETRY_S = 30.0
+    _gpu_down_until = 0.0
+
+    def _render_on_gpu(self, text: str, voice_id: str, speed: float,
+                       glang: str) -> bytes | None:
+        import time
+        import urllib.request
+
+        url = os.environ.get("KOKORO_GPU_URL", "")
+        if not url or time.monotonic() < KokoroEngine._gpu_down_until:
+            return None
+        body = json.dumps({"text": text, "voice": voice_id, "lang": glang,
+                           "speed": speed}).encode()
+        req = urllib.request.Request(url.rstrip("/") + "/tts", data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            # MEASURED: 300 ms for 98 characters, ~2x that with svara busy.
+            with urllib.request.urlopen(req, timeout=3 + len(text) * 0.01) as r:
+                return r.read()
+        except Exception as e:                      # noqa: BLE001 — use the CPU
+            KokoroEngine._gpu_down_until = time.monotonic() + self._GPU_RETRY_S
+            print(f"[voxforge] kokoro GPU unavailable ({e!r}); "
+                  f"CPU for {self._GPU_RETRY_S:.0f}s")
+            return None
+
     def list_voices(self) -> list[VoiceInfo]:
         out = []
         for vid, (pretty, lang, gender, _glang) in self._voices.items():
@@ -754,18 +784,23 @@ class KokoroEngine:
         if voice_id not in self._voices:
             raise EngineError(f"unknown voice {voice_id}")
         glang = self._voices[voice_id][3]  # kokoro g2p code, e.g. "hi", "en-us"
-        samples, sr = self._k.create(
-            text, voice=voice_id, speed=_clamp(rate, 0.5, 2.0), lang=glang
-        )
-        pcm = np.clip(np.asarray(samples) * 32768.0, -32768, 32767).astype(np.int16)
+        speed = _clamp(rate, 0.5, 2.0)
+        gpu_wav = self._render_on_gpu(text, voice_id, speed, glang)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
             wav_path = tf.name
         try:
-            with wave.open(wav_path, "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(sr)
-                wf.writeframes(pcm.tobytes())
+            if gpu_wav is not None:
+                Path(wav_path).write_bytes(gpu_wav)
+            else:
+                samples, sr = self._k.create(
+                    text, voice=voice_id, speed=speed, lang=glang
+                )
+                pcm = np.clip(np.asarray(samples) * 32768.0, -32768, 32767).astype(np.int16)
+                with wave.open(wav_path, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(sr)
+                    wf.writeframes(pcm.tobytes())
             return _finalize(wav_path, fmt, pitch=pitch, volume=volume)
         finally:
             if os.path.exists(wav_path):

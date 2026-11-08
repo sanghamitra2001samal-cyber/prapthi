@@ -18,6 +18,7 @@ import re
 import contextlib
 import os
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 import time
@@ -45,6 +46,7 @@ import dubbing
 import fast_stt
 import hinglish
 import speech_text
+import tts_live
 import rvcbridge
 import sargam
 import song as songmod
@@ -2260,6 +2262,154 @@ def _needs_english_in_devanagari(voice_id: str) -> bool:
     return v.startswith(_DEVANAGARI_ONLY)
 
 
+def _prepare_text(text: str, voice_id: str, clone: dict | None = None) -> str:
+    """The text an engine should actually read: numbers, dates and the like
+    written out for the voice's language, then romanised Hindi or Bengali put
+    into the script the engine can read."""
+    text = normalize_speech_text(text, _speech_lang(voice_id, clone))
+    # Hinglish: for Hindi voices, convert common romanized Hindi words to
+    # Devanagari so they're pronounced natively (QA #3/#4, best-effort).
+    # Sanskrit voices are excluded — the dictionary is Hindi-specific.
+    if (
+        hinglish.is_hindi_voice(voice_id) or voice_id.startswith("if5")
+    ) and voice_id not in SANSKRIT_VOICES:
+        text = hinglish.to_devanagari(
+            text, speak_english=_needs_english_in_devanagari(voice_id))
+    elif hinglish.is_bengali_voice(voice_id):
+        # Same reason as above, different script. None of the Bengali
+        # engines can read Latin: MMS deletes it, svara can derail.
+        text = hinglish.to_bengali(text, speak_english=True)
+    return text
+
+
+def _emotion_prosody(emo: str, intensity: float, rate: float, pitch: float,
+                     volume: float) -> tuple[float, float, float]:
+    """Emotion prosody: scale the user's sliders by the emotion's feel factors
+    (themselves scaled by intensity) so happy is brighter/faster, sad
+    slower/softer, etc. — on every engine."""
+    es, ep, ev = _EMOTION_PROSODY.get(emo, (1.0, 1.0, 1.0))
+    es = 1.0 + (es - 1.0) * intensity
+    ep = 1.0 + (ep - 1.0) * intensity
+    ev = 1.0 + (ev - 1.0) * intensity
+    # Cap effective speed at 1.6× — beyond that, voices clip word endings (QA #2).
+    return min(rate * es, 1.6), pitch * ep, volume * ev
+
+
+# Bengali reads slower than everything else we serve, and it is not one bad
+# model: measured on sentences of matched length, every Bengali engine lands
+# at 5.25-5.54 syllables per second against 5.95-6.96 for Hindi. Natural
+# Indic speech sits around 5.5-7, so Bengali is at the bottom of the range
+# and reads as hesitant. This lifts it to about 6, still under Hindi.
+# Applied to IndicF5 only, which is where it was measured: 5.35 -> 5.88 and
+# 5.54 -> 6.07 syllables/sec. svara ignores speed entirely, and MMS scales
+# it quite differently — the same 1.12 took MMS from 5.25 to 7.28, faster
+# than any Hindi voice and plainly rushed. Do not widen this without
+# measuring the engine you are widening it to.
+def _engine_pace(voice_id: str, rate: float) -> float:
+    """Per-engine pace correction on top of the customer's speed."""
+    if voice_id.startswith("if5-bn"):
+        return min(rate * _BENGALI_PACE, 1.6)
+    return rate
+
+
+def _cbx_ex(emo: str, intensity: float) -> tuple[float, float]:
+    ex, cfg = emotion_mod.feel(emo).cbx
+    return (max(0.25, min(2.0, 0.5 + (ex - 0.5) * intensity)), cfg)
+
+
+async def _render_take(voice_id: str, t_: str, emo_: str, r_: float, p_: float,
+                       v_: float, fmt_: str, *,
+                       sliders: tuple[float, float, float], intensity: float,
+                       clone: dict | None = None, if5clone: dict | None = None,
+                       meter: str = "auto"):
+    """Run the right engine for this voice (one feeling, one chunk).
+
+    r_/p_/v_ already carry the emotion's prosody; `sliders` are the customer's
+    own settings, used when the engine renders plainly and the feeling is
+    shaped onto the audio afterwards."""
+    if voice_id == "vagdhenu-sa-chant":
+        return await run_in_threadpool(
+            vagdhenu_synth, t_,
+            meter=meter, fmt=fmt_,
+            speed=r_, pitch=p_, volume=v_,
+        )
+    elif if5clone:
+        _rt = ""
+        try:
+            _rt = Path(if5clone["path"]).with_suffix(".txt").read_text().strip()
+        except OSError:
+            pass
+        return await run_in_threadpool(
+            if5_synth, t_, if5clone["path"], _rt,
+            fmt=fmt_, speed=r_, pitch=p_, volume=v_,
+        )
+    elif voice_id.startswith("if5-"):
+        ref = _if5_ref(voice_id)
+        if not ref:
+            raise EngineError("unknown voice")
+        return await run_in_threadpool(
+            if5_synth, t_, ref[0], ref[1],
+            fmt=fmt_, speed=r_, pitch=p_, volume=v_,
+        )
+    elif clone:
+        return await run_in_threadpool(
+            chatterbox_synth,
+            t_,
+            language_id=clone["lang"],
+            emotion=emo_,
+            exaggeration=_cbx_ex(emo_, intensity),
+            fmt=fmt_,
+            audio_prompt_path=clone["path"],
+            speed=r_,
+            pitch=p_,
+            volume=v_,
+        )
+    else:
+        owner, vlang = _voice_owner(voice_id)
+        native = owner in _NATIVE_EMOTION_ENGINES
+        if native or emo_ in ("neutral", "auto"):
+            return await run_in_threadpool(
+                ENGINE.synthesize,
+                text=t_,
+                voice_id=voice_id,
+                rate=r_,
+                pitch=p_,
+                volume=v_,
+                fmt=fmt_,
+                emotion=emo_,
+            )
+        # This engine cannot act. Render it plainly (user sliders only, no
+        # emotion prosody) and reshape the melody, tempo and loudness for
+        # the feeling — works in every language and keeps the voice.
+        wav, _m = await run_in_threadpool(
+            ENGINE.synthesize,
+            text=t_,
+            voice_id=voice_id,
+            rate=sliders[0],
+            pitch=sliders[1],
+            volume=sliders[2],
+            fmt="wav",
+            emotion=emo_,
+        )
+        shaped = await run_in_threadpool(
+            _tone_shape, wav, emo_, intensity, vlang
+        )
+        if shaped is None:  # shaping unavailable -> previous behaviour
+            return await run_in_threadpool(
+                ENGINE.synthesize,
+                text=t_,
+                voice_id=voice_id,
+                rate=r_,
+                pitch=p_,
+                volume=v_,
+                fmt=fmt_,
+                emotion=emo_,
+            )
+        if fmt_ == "wav":
+            return shaped, "audio/wav"
+        return await run_in_threadpool(_wav_to_mp3, shaped)
+
+
 async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Response:
     ip = _client_ip(request)
     if demo:
@@ -2348,19 +2498,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         # billed a third time for a WAV attempt that was refused a few lines
         # later. Measured on the submitted text, before conversion rewrites it.
         _billable = len(text)
-        text = normalize_speech_text(text, _speech_lang(voice_id, clone))
-        # Hinglish: for Hindi voices, convert common romanized Hindi words to
-        # Devanagari so they're pronounced natively (QA #3/#4, best-effort).
-        # Sanskrit voices are excluded — the dictionary is Hindi-specific.
-        if (
-            hinglish.is_hindi_voice(voice_id) or voice_id.startswith("if5")
-        ) and voice_id not in SANSKRIT_VOICES:
-            text = hinglish.to_devanagari(
-                text, speak_english=_needs_english_in_devanagari(voice_id))
-        elif hinglish.is_bengali_voice(voice_id):
-            # Same reason as above, different script. None of the Bengali
-            # engines can read Latin: MMS deletes it, svara can derail.
-            text = hinglish.to_bengali(text, speak_english=True)
+        text = _prepare_text(text, voice_id, clone)
 
     try:
         rate = float(body.get("rate", 1.0))
@@ -2405,12 +2543,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     # (themselves scaled by intensity) so happy is brighter/faster, sad
     # slower/softer, etc. — on every engine.
     def _prosody(emo: str) -> tuple[float, float, float]:
-        es, ep, ev = _EMOTION_PROSODY.get(emo, (1.0, 1.0, 1.0))
-        es = 1.0 + (es - 1.0) * intensity
-        ep = 1.0 + (ep - 1.0) * intensity
-        ev = 1.0 + (ev - 1.0) * intensity
-        # Cap effective speed at 1.6× — beyond that, voices clip word endings (QA #2).
-        return min(rate * es, 1.6), pitch * ep, volume * ev
+        return _emotion_prosody(emo, intensity, rate, pitch, volume)
 
     # "auto": follow the scenario sentence by sentence (emotion.detect).
     # One feeling throughout -> the normal single-shot path with that feeling.
@@ -2420,114 +2553,21 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     if emotion == "auto":
         emotion = runs[0][1] if len(runs) == 1 else ("neutral" if not runs else emotion)
     eng_rate, eng_pitch, eng_volume = _prosody(emotion if emotion != "auto" else "neutral")
-
-    # Bengali reads slower than everything else we serve, and it is not one bad
-    # model: measured on sentences of matched length, every Bengali engine lands
-    # at 5.25-5.54 syllables per second against 5.95-6.96 for Hindi. Natural
-    # Indic speech sits around 5.5-7, so Bengali is at the bottom of the range
-    # and reads as hesitant. This lifts it to about 6, still under Hindi.
-    # Applied to IndicF5 only, which is where it was measured: 5.35 -> 5.88 and
-    # 5.54 -> 6.07 syllables/sec. svara ignores speed entirely, and MMS scales
-    # it quite differently — the same 1.12 took MMS from 5.25 to 7.28, faster
-    # than any Hindi voice and plainly rushed. Do not widen this without
-    # measuring the engine you are widening it to.
-    if voice_id.startswith("if5-bn"):
-        eng_rate = min(eng_rate * _BENGALI_PACE, 1.6)
+    eng_rate = _engine_pace(voice_id, eng_rate)
 
     # Vāgdhenu renders per-meter, so the meter is part of the cache identity.
     if voice_id == "vagdhenu-sa-chant":
         _meter = str(body.get("meter", "auto")).strip() or "auto"
         cache_vid = f"{cache_vid}~{_meter}"
 
-    def _cbx_ex(emo: str) -> tuple[float, float]:
-        ex, cfg = emotion_mod.feel(emo).cbx
-        return (max(0.25, min(2.0, 0.5 + (ex - 0.5) * intensity)), cfg)
-
     async def _render(t_: str, emo_: str, r_: float, p_: float, v_: float,
                       fmt_: str):
         """Run the right engine for this voice (one feeling, one chunk)."""
-        if voice_id == "vagdhenu-sa-chant":
-            meter = str(body.get("meter", "auto")).strip() or "auto"
-            return await run_in_threadpool(
-                vagdhenu_synth, t_,
-                meter=meter, fmt=fmt_,
-                speed=r_, pitch=p_, volume=v_,
-            )
-        elif if5clone:
-            _rt = ""
-            try:
-                _rt = Path(if5clone["path"]).with_suffix(".txt").read_text().strip()
-            except OSError:
-                pass
-            return await run_in_threadpool(
-                if5_synth, t_, if5clone["path"], _rt,
-                fmt=fmt_, speed=r_, pitch=p_, volume=v_,
-            )
-        elif voice_id.startswith("if5-"):
-            ref = _if5_ref(voice_id)
-            if not ref:
-                raise EngineError("unknown voice")
-            return await run_in_threadpool(
-                if5_synth, t_, ref[0], ref[1],
-                fmt=fmt_, speed=r_, pitch=p_, volume=v_,
-            )
-        elif clone:
-            return await run_in_threadpool(
-                chatterbox_synth,
-                t_,
-                language_id=clone["lang"],
-                emotion=emo_,
-                exaggeration=_cbx_ex(emo_),
-                fmt=fmt_,
-                audio_prompt_path=clone["path"],
-                speed=r_,
-                pitch=p_,
-                volume=v_,
-            )
-        else:
-            owner, vlang = _voice_owner(voice_id)
-            native = owner in _NATIVE_EMOTION_ENGINES
-            if native or emo_ in ("neutral", "auto"):
-                return await run_in_threadpool(
-                    ENGINE.synthesize,
-                    text=t_,
-                    voice_id=voice_id,
-                    rate=r_,
-                    pitch=p_,
-                    volume=v_,
-                    fmt=fmt_,
-                    emotion=emo_,
-                )
-            # This engine cannot act. Render it plainly (user sliders only, no
-            # emotion prosody) and reshape the melody, tempo and loudness for
-            # the feeling — works in every language and keeps the voice.
-            wav, _m = await run_in_threadpool(
-                ENGINE.synthesize,
-                text=t_,
-                voice_id=voice_id,
-                rate=rate,
-                pitch=pitch,
-                volume=volume,
-                fmt="wav",
-                emotion=emo_,
-            )
-            shaped = await run_in_threadpool(
-                _tone_shape, wav, emo_, intensity, vlang
-            )
-            if shaped is None:  # shaping unavailable -> previous behaviour
-                return await run_in_threadpool(
-                    ENGINE.synthesize,
-                    text=t_,
-                    voice_id=voice_id,
-                    rate=r_,
-                    pitch=p_,
-                    volume=v_,
-                    fmt=fmt_,
-                    emotion=emo_,
-                )
-            if fmt_ == "wav":
-                return shaped, "audio/wav"
-            return await run_in_threadpool(_wav_to_mp3, shaped)
+        return await _render_take(
+            voice_id, t_, emo_, r_, p_, v_, fmt_,
+            sliders=(rate, pitch, volume), intensity=intensity,
+            clone=clone, if5clone=if5clone,
+            meter=str(body.get("meter", "auto")).strip() or "auto")
 
     async def _render_scenario(runs_, fmt_: str = "wav"):
         """auto mode: each run in its own feeling, joined with short pauses."""
@@ -3116,6 +3156,8 @@ routes = [
     Route("/demo/synthesize", demo_synthesize, methods=["POST"]),
     Route("/preview", preview, methods=["POST"]),
 ]
+# Live speech over a WebSocket: text in as it is written, audio out per phrase.
+routes += tts_live.routes(sys.modules[__name__])
 
 MAX_BODY = int(os.environ.get("VOXFORGE_MAX_BODY", str(1024 * 1024)))  # 1 MB
 MAX_CLONE_BODY = int(
