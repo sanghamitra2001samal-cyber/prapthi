@@ -540,6 +540,15 @@ class PiperEngine:
         "venkatesh": "male",
         "arjun": "male",
         "fasih": "male",
+        # added 8 Nov 2026 (gender confirmed by measured pitch)
+        "aegis_female": "female",
+        "dimitar": "male",
+        "edon": "male",
+        "antton": "male",
+        "maider": "female",
+        "talesyntese": "male",
+        "bu_tts": "female",
+        "news": "male",           # et_EE-news
     }
     _QUALITY = {"x_low": "Low", "low": "Low", "medium": "Medium", "high": "High"}
     # Indian display names for the English voices (label-only; model unchanged).
@@ -549,6 +558,15 @@ class PiperEngine:
         "jenny_dioco": "Aditi",
         "amy": "Pooja",
         "hfc_female": "Naina",
+    }
+    # Names for single voices, keyed by the full voice id: a speaker label can
+    # be shared across languages (da_DK and no_NO are both "talesyntese"), so
+    # keying these by label renamed the Danish voice (8 Nov 2026).
+    _VOICE_ALIAS = {
+        "ur_PK-aegis_female-medium": "Ayesha",
+        "et_EE-news-medium": "Mart",
+        "cy_GB-bu_tts-medium": "Cerys",
+        "no_NO-talesyntese-medium": "Lars",
     }
 
     def list_voices(self) -> list[VoiceInfo]:
@@ -560,7 +578,8 @@ class PiperEngine:
             lang = locale.replace("_", "-")
             speaker = parts[1] if len(parts) > 1 else stem
             quality = self._QUALITY.get(parts[2], "") if len(parts) > 2 else ""
-            pretty = self._NAME_ALIAS.get(speaker, speaker.replace("_", " ").title())
+            pretty = self._VOICE_ALIAS.get(stem) or self._NAME_ALIAS.get(
+                speaker, speaker.replace("_", " ").title())
             label = f"{pretty} (Neural{', ' + quality if quality else ''})"
             gender = self._KNOWN_GENDER.get(speaker, _guess_gender(stem))
             voices.append(
@@ -709,6 +728,17 @@ class KokoroEngine:
         "zm_yunxi": ("Yunxi · Chinese", "zh-CN", "male", "cmn"),
         "zm_yunjian": ("Yunjian · Chinese", "zh-CN", "male", "cmn"),
         "zm_yunxia": ("Yunxia · Chinese", "zh-CN", "male", "cmn"),
+        # Spanish, Italian, Portuguese, French. Added 8 Nov 2026: Whisper read
+        # each one back word for word (0% character errors). Japanese was
+        # tried and left out: this g2p cannot read kanji and the voices babble.
+        # em_santa / pm_santa also pass but are a Father Christmas character.
+        "ef_dora": ("Dora · Spanish", "es-ES", "female", "es"),
+        "em_alex": ("Alejandro · Spanish", "es-ES", "male", "es"),
+        "if_sara": ("Sara · Italian", "it-IT", "female", "it"),
+        "im_nicola": ("Nicola · Italian", "it-IT", "male", "it"),
+        "pf_dora": ("Luísa · Portuguese", "pt-BR", "female", "pt-br"),
+        "pm_alex": ("João · Portuguese", "pt-BR", "male", "pt-br"),
+        "ff_siwis": ("Élodie · French", "fr-FR", "female", "fr-fr"),
     }
 
     def __init__(self) -> None:
@@ -842,6 +872,22 @@ class MMSEngine:
         "mms-guj": ("Gujarati", "gu-IN", "neutral", "facebook/mms-tts-guj"),
         "mms-mar": ("Marathi", "mr-IN", "neutral", "facebook/mms-tts-mar"),
         "mms-pan": ("Punjabi", "pa-IN", "neutral", "facebook/mms-tts-pan"),
+        # Added 8 Nov 2026 (licence: CC-BY-NC-4.0, like the rest of MMS; the
+        # owner chose to add them). Each reads its language's own script:
+        # Urdu in Arabic script, Ho and Mundari in Odia script, the rest in
+        # Devanagari. Whisper read Urdu back word-perfect; the Hindi-belt
+        # languages came back 5-24% off through a Hindi recogniser.
+        "mms-urd": ("Urdu", "ur-IN", "neutral", "facebook/mms-tts-urd-script_arabic"),
+        "mms-bgc": ("Haryanvi", "bgc-IN", "neutral", "facebook/mms-tts-bgc"),
+        "mms-mag": ("Magahi", "mag-IN", "neutral", "facebook/mms-tts-mag"),
+        "mms-gbm": ("Garhwali", "gbm-IN", "neutral", "facebook/mms-tts-gbm"),
+        "mms-kru": ("Kurukh", "kru-IN", "neutral", "facebook/mms-tts-kru"),
+        "mms-sck": ("Sadri", "sck-IN", "neutral", "facebook/mms-tts-sck"),
+        "mms-xnr": ("Kangri", "xnr-IN", "neutral", "facebook/mms-tts-xnr"),
+        "mms-bfy": ("Bagheli", "bfy-IN", "neutral", "facebook/mms-tts-bfy"),
+        "mms-mup": ("Malvi", "mup-IN", "neutral", "facebook/mms-tts-mup"),
+        "mms-hoc": ("Ho", "hoc-IN", "neutral", "facebook/mms-tts-hoc"),
+        "mms-unr": ("Mundari", "unr-IN", "neutral", "facebook/mms-tts-unr"),
     }
 
     def __init__(self) -> None:
