@@ -169,6 +169,26 @@ PREVIEW_TEMPLATES = {
     "he": "אני {n}. אני הקול של Prapthi Ai. מה שלומך?",
     "ms": "Saya {n}. Saya suara Prapthi Ai. Apa khabar?",
     "sw": "Mimi ni {n}. Mimi ni sauti ya Prapthi Ai. Habari yako?",
+    # Languages added 8 Nov 2026. Each in the script its voice reads (an MMS
+    # voice drops anything else), so the brand is spelt in that script too.
+    "ur": "میں {n} ہوں۔ میں پراپتی اے آئی کی آواز ہوں۔ آپ کیسے ہیں؟",
+    "bgc": "मैं {n} सूं। मैं प्राप्ति ए आई की आवाज सूं। थम कैसे हो?",
+    "mag": "हम {n} हियो। हम प्राप्ति ए आई के आवाज हियो। अपने कइसन हथिन?",
+    "gbm": "मि {n} छौं। मि प्राप्ति ए आई कि आवाज छौं। तुम कन छा?",
+    "sck": "मोंय {n} हेकों। मोंय प्राप्ति ए आई कर आवाज हेकों। तोंय कइसन आहिस?",
+    "xnr": "मैं {n} हां। मैं प्राप्ति ए आई दी आवाज हां। तुसां कियां हन?",
+    "bfy": "हम {n} हयन। हम प्राप्ति ए आई के आवाज हयन। आप कइसन हयन?",
+    "mup": "म्हूं {n} हूं। म्हूं प्राप्ति ए आई की आवाज हूं। थें कसा हो?",
+    # Kurukh, Ho, Mundari: the name and the brand only, rather than a guessed
+    # sentence in a language we cannot check.
+    "kru": "{n}। प्राप्ति ए आई।",
+    "hoc": "{n}। ପ୍ରାପ୍ତି ଏ ଆଇ।",
+    "unr": "{n}। ପ୍ରାପ୍ତି ଏ ଆଇ।",
+    "bg": "Аз съм {n}. Аз съм гласът на Прапти Ей Ай. Как сте?",
+    "sq": "Unë jam {n}. Unë jam zëri i Prapthi Ai. Si jeni?",
+    "eu": "{n} naiz. Prapthi Ai-ren ahotsa naiz. Zer moduz zaude?",
+    "et": "Mina olen {n}. Olen Prapthi Ai hääl. Kuidas läheb?",
+    "cy": "{n} ydw i. Fi yw llais Prapthi Ai. Sut dych chi?",
 }
 
 

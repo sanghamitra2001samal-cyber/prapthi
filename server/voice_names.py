@@ -35,6 +35,9 @@ _LANGUAGE_WORDS = {
     "malayalam", "punjabi", "urdu", "odia", "assamese", "sanskrit", "english",
     "nepali", "maithili", "bodo", "dogri", "manipuri", "bhojpuri",
     "chhattisgarhi", "konkani", "sindhi", "kashmiri", "santali",
+    # added with their voices, 8 Nov 2026
+    "haryanvi", "magahi", "garhwali", "kurukh", "sadri", "kangri", "bagheli",
+    "malvi", "ho", "mundari",
 }
 # Anything with a digit in it, our own product names, and the corpus/vendor
 # names that ship with the upstream voice datasets.
@@ -87,6 +90,23 @@ _POOLS: dict[str, dict[str, list[str]]] = {
     "mni": {"female": ["Thoibi", "Chaoba"], "male": ["Laishram", "Ranjit"]},
     "hne": {"female": ["Champa", "Bhanu"], "male": ["Sukhram", "Dau"]},
     "bho": {"female": ["Gita", "Sushma"], "male": ["Manish", "Vijay"]},
+    # Languages added 8 Nov 2026: names people there would recognise.
+    "bgc": {"female": ["Sunita", "Bimla"], "male": ["Rajbir", "Satbir"]},
+    "mag": {"female": ["Rinki", "Sunaina"], "male": ["Ramashish", "Chandan"]},
+    "gbm": {"female": ["Basanti", "Kamla"], "male": ["Dhan Singh", "Gopal"]},
+    "kru": {"female": ["Phulmani", "Sukhmani"], "male": ["Budhu", "Somra"]},
+    "sck": {"female": ["Lalmani", "Sunita"], "male": ["Ramesh", "Mangra"]},
+    "xnr": {"female": ["Shanti", "Kanta"], "male": ["Kuldeep", "Rakesh"]},
+    "bfy": {"female": ["Ramkali", "Sushila"], "male": ["Ramlal", "Shyam"]},
+    "mup": {"female": ["Sita", "Kamla"], "male": ["Bhagirath", "Ramesh"]},
+    "hoc": {"female": ["Jayanti", "Sukurmani"], "male": ["Mangal", "Sido"]},
+    "unr": {"female": ["Salomi", "Sukhmani"], "male": ["Birsa", "Sukru"]},
+    "no": {"female": ["Ingrid", "Sigrid"], "male": ["Lars", "Erik"]},
+    "bg": {"female": ["Mariya", "Elena"], "male": ["Dimitar", "Georgi"]},
+    "sq": {"female": ["Elira", "Ana"], "male": ["Edon", "Arben"]},
+    "eu": {"female": ["Maider", "Miren"], "male": ["Antton", "Iker"]},
+    "et": {"female": ["Kadri", "Liis"], "male": ["Mart", "Andres"]},
+    "cy": {"female": ["Cerys", "Nia"], "male": ["Dafydd", "Rhys"]},
     "ur": {"female": ["Sana", "Nadia", "Hina"], "male": ["Imran", "Faisal", "Zeeshan"]},
     "en": {"female": ["Evelyn", "Clara", "Harper", "Nora", "Freya", "Iris"],
            "male":   ["Julian", "Nathan", "Elliot", "Miles", "Owen", "Felix"]},
@@ -209,6 +229,23 @@ def pretty(voice_id: str, raw: str, lang: str = "en", gender: str = "female") ->
     return name
 
 
+# Voices added after customers had seen the catalogue are named after it, so a
+# new voice can only take a name that is free and nobody is renamed: the
+# Parler voices (hidden until 6 Nov 2026) and the 8 Nov 2026 additions.
+_ADDED_8NOV = frozenset({
+    "mms-urd", "mms-bgc", "mms-mag", "mms-gbm", "mms-kru", "mms-sck", "mms-xnr", "mms-bfy",
+    "mms-mup", "mms-hoc", "mms-unr", "ur_PK-aegis_female-medium", "ur_PK-fasih-medium",
+    "no_NO-talesyntese-medium", "bg_BG-dimitar-medium", "sq_AL-edon-medium",
+    "eu_ES-antton-medium", "eu_ES-maider-medium", "et_EE-news-medium", "cy_GB-bu_tts-medium",
+    "ef_dora", "em_alex", "if_sara", "im_nicola", "pf_dora", "pm_alex", "ff_siwis"})
+
+
+def _named_late(voice_id: str) -> int:
+    if voice_id in _ADDED_8NOV:
+        return 2
+    return 1 if voice_id.startswith("parler-") else 0
+
+
 def pretty_all(rows: list[tuple[str, str, str, str]]) -> dict[str, str]:
     """Name a whole catalogue at once, guaranteeing no two voices in the same
     language share a name.
@@ -223,7 +260,7 @@ def pretty_all(rows: list[tuple[str, str, str, str]]) -> dict[str, str]:
     and every voice that was already in the picker keeps its name."""
     out: dict[str, str] = {}
     taken: dict[str, set[str]] = {}
-    for vid, raw, lang, gender in sorted(rows, key=lambda r: (r[0].startswith("parler-"), r[0])):
+    for vid, raw, lang, gender in sorted(rows, key=lambda r: (_named_late(r[0]), r[0])):
         key = (lang or "en").split("-")[0].lower()
         used = taken.setdefault(key, set())
         name = pretty(vid, raw, lang, gender)
@@ -310,6 +347,18 @@ _MEASURED_F0 = {
     "mms-hin": 141.6,
     "mms-kan": 152.9,
     "mms-mai": 216.1,
+    # measured 8 Nov 2026 on one sentence each (Praat median F0)
+    "mms-urd": 127.2,
+    "mms-bgc": 158.1,
+    "mms-mag": 165.0,
+    "mms-gbm": 162.3,
+    "mms-kru": 190.5,
+    "mms-sck": 208.9,
+    "mms-xnr": 137.8,
+    "mms-bfy": 209.1,
+    "mms-mup": 159.3,
+    "mms-hoc": 164.5,
+    "mms-unr": 185.8,
     "mms-mal": 117.2,
     "mms-mar": 198.4,
     "mms-ory": 148.4,
