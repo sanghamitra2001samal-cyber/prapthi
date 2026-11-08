@@ -1,0 +1,281 @@
+﻿Language,Locale,Name,Gender,Plan,Engine,Speed,Voice ID
+Hindi,hi-IN,Aanya,female,Premium,IndicF5 HD,fast,if5-aanya
+Hindi,hi-IN,Ananya,female,Premium,Chatterbox Expressive,fast,chatterbox-hi-ananya
+Hindi,hi-IN,Aria,female,Free,Kokoro,fast,hf_alpha
+Hindi,hi-IN,Diya,female,Free,Kokoro,fast,hf_beta
+Hindi,hi-IN,Ishita,female,Premium,IndicF5 HD,fast,if5-hi-anjali
+Hindi,hi-IN,Meher,female,Premium,IndicF5 HD,fast,if5-hi-rani
+Hindi,hi-IN,Naina,female,Premium,IndicF5 HD,fast,if5-hi-sneha
+Hindi,hi-IN,Priyamvada,female,Free,Piper,fast,hi_IN-priyamvada-medium
+Hindi,hi-IN,Sonal,female,Premium,IndicF5 HD,fast,if5-hi-divya
+Hindi,hi-IN,Vaishali,female,Premium,Svara,fast,svara-hi-f
+Hindi,hi-IN,Aarav,male,Premium,IndicF5 HD,fast,if5-aarav
+Hindi,hi-IN,Aarush,male,Premium,IndicF5 HD,fast,if5-hi-vikram
+Hindi,hi-IN,Arjun,male,Free,Kokoro,fast,hm_omega
+Hindi,hi-IN,Girish,male,Premium,IndicF5 HD,fast,if5-hi-aman
+Hindi,hi-IN,Kabir,male,Free,Kokoro,fast,hm_psi
+Hindi,hi-IN,Manav,male,Premium,IndicF5 HD,fast,if5-hi-manoj
+Hindi,hi-IN,Nakul,male,Free,MMS,fast,mms-hin
+Hindi,hi-IN,Nikhil,male,Premium,IndicF5 HD,fast,if5-hi-rohan
+Hindi,hi-IN,Rohan,male,Free,Piper,fast,hi_IN-rohan-medium
+Hindi,hi-IN,Samar,male,Premium,IndicF5 HD,fast,if5-hi-arjun
+Hindi,hi-IN,Shaurya,male,Premium,Svara,fast,svara-hi-m
+Hindi,hi-IN,Vikrant,male,Premium,IndicF5 HD,fast,if5-hi-dev
+Hindi,hi-IN,Yuvan,male,Premium,IndicF5 HD,fast,if5-hi-rohit
+Hindi,hi-IN,Yuvraj,male,Premium,IndicF5 HD,fast,if5-hi-m2
+Hindi,hi-IN,Anjali (bright),female,Premium,Parler HD,slow,parler-hi-anjali2
+Hindi,hi-IN,Divya,female,Premium,Parler HD,slow,parler-hi-divya
+Hindi,hi-IN,Kavita (storyteller),female,Premium,Parler HD,slow,parler-hi-kavita
+Hindi,hi-IN,Meera (mature),female,Premium,Parler HD,slow,parler-hi-meera2
+Hindi,hi-IN,Priya (soft),female,Premium,Parler HD,slow,parler-hi-priya2
+Hindi,hi-IN,Rani,female,Premium,Parler HD,slow,parler-hi-rani
+Hindi,hi-IN,Sneha (sweet),female,Premium,Parler HD,slow,parler-hi-sneha2
+Hindi,hi-IN,Aman,male,Premium,Parler HD,slow,parler-hi-aman
+Hindi,hi-IN,Arjun (young),male,Premium,Parler HD,slow,parler-hi-arjun
+Hindi,hi-IN,Dev (warm),male,Premium,Parler HD,slow,parler-hi-dev
+Hindi,hi-IN,Manoj (anchor),male,Premium,Parler HD,slow,parler-hi-manoj
+Hindi,hi-IN,Raghav (calm),male,Premium,Parler HD,slow,parler-hi-raghav2
+Hindi,hi-IN,Rohit,male,Premium,Parler HD,slow,parler-hi-rohit
+Hindi,hi-IN,Vikram (deep),male,Premium,Parler HD,slow,parler-hi-vikram
+Bengali,bn-IN,Mitali,female,Premium,IndicF5 HD,fast,if5-bn-aditi
+Bengali,bn-IN,Moushumi,female,Premium,Svara,fast,svara-bn-f
+Bengali,bn-IN,Piyali,female,Premium,IndicF5 HD,fast,if5-bn-riya
+Bengali,bn-IN,Rupa,female,Premium,IndicF5 HD,fast,if5-bn-f
+Bengali,bn-IN,Shreya,female,Premium,IndicF5 HD,fast,if5-bn-rashmi
+Bengali,bn-IN,Anirban,male,Premium,IndicF5 HD,fast,if5-bn-arnav
+Bengali,bn-IN,Debashish,male,Premium,IndicF5 HD,fast,if5-bn-aman
+Bengali,bn-IN,Nilay,male,Premium,IndicF5 HD,fast,if5-bn-rohan
+Bengali,bn-IN,Partho,male,Premium,IndicF5 HD,fast,if5-bn-m
+Bengali,bn-IN,Shubho,male,Free,MMS,fast,mms-ben
+Bengali,bn-IN,Subir,male,Premium,IndicF5 HD,fast,if5-bn-arjun
+Bengali,bn-IN,Tapas,male,Premium,IndicF5 HD,fast,if5-bn-tapan
+Bengali,bn-IN,Tathagata,male,Premium,Svara,fast,svara-bn-m
+Bengali,bn-IN,Aditi,female,Premium,Parler HD,slow,parler-bn-aditi
+Bengali,bn-IN,Rashmi,female,Premium,Parler HD,slow,parler-bn-rashmi
+Bengali,bn-IN,Riya,female,Premium,Parler HD,slow,parler-bn-riya
+Bengali,bn-IN,Arjun,male,Premium,Parler HD,slow,parler-bn-arjun
+Bengali,bn-IN,Arnav,male,Premium,Parler HD,slow,parler-bn-arnav
+Bengali,bn-IN,Tapan,male,Premium,Parler HD,slow,parler-bn-tapan
+Marathi,mr-IN,Manasi,female,Premium,Svara,fast,svara-mr-f
+Marathi,mr-IN,Sayali,female,Premium,IndicF5 HD,fast,if5-mr-f
+Marathi,mr-IN,Sonal,female,Free,MMS,fast,mms-mar
+Marathi,mr-IN,Aniket,male,Premium,IndicF5 HD,fast,if5-mr-m
+Marathi,mr-IN,Sarang,male,Premium,Svara,fast,svara-mr-m
+Marathi,mr-IN,Isha,female,Premium,Parler HD,slow,parler-mr-isha
+Marathi,mr-IN,Radha,female,Premium,Parler HD,slow,parler-mr-radha
+Marathi,mr-IN,Sunita,female,Premium,Parler HD,slow,parler-mr-sunita
+Marathi,mr-IN,Nikhil,male,Premium,Parler HD,slow,parler-mr-nikhil
+Marathi,mr-IN,Sanjay,male,Premium,Parler HD,slow,parler-mr-sanjay
+Marathi,mr-IN,Varun,male,Premium,Parler HD,slow,parler-mr-varun
+Bhojpuri,bho-IN,Gita,female,Premium,IndicF5 HD,fast,if5-bho-f
+Bhojpuri,bho-IN,Sushma,female,Premium,Svara,fast,svara-bho-f
+Bhojpuri,bho-IN,Manish,male,Premium,IndicF5 HD,fast,if5-bho-m
+Bhojpuri,bho-IN,Vijay,male,Premium,Svara,fast,svara-bho-m
+Bhojpuri,bho-IN,Lalita,female,Premium,Parler HD,slow,parler-bho-sushma
+Bhojpuri,bho-IN,Radha (soft),female,Premium,Parler HD,slow,parler-bho-radha
+Bhojpuri,bho-IN,Sunita,female,Premium,Parler HD,slow,parler-bho-gita
+Bhojpuri,bho-IN,Dinesh,male,Premium,Parler HD,slow,parler-bho-manish
+Bhojpuri,bho-IN,Ramesh (deep),male,Premium,Parler HD,slow,parler-bho-ramesh
+Bhojpuri,bho-IN,Santosh,male,Premium,Parler HD,slow,parler-bho-vijay
+Telugu,te-IN,Keerthi,female,Premium,IndicF5 HD,fast,if5-te-f
+Telugu,te-IN,Maya,female,Free,Piper,fast,te_IN-maya-medium
+Telugu,te-IN,Vennela,female,Premium,Svara,fast,svara-te-f
+Telugu,te-IN,Bhaskar,male,Free,MMS,fast,mms-tel
+Telugu,te-IN,Charan,male,Premium,Svara,fast,svara-te-m
+Telugu,te-IN,Sharath,male,Premium,IndicF5 HD,fast,if5-te-m
+Telugu,te-IN,Venkatesh,male,Free,Piper,fast,te_IN-venkatesh-medium
+Telugu,te-IN,Lalitha,female,Premium,Parler HD,slow,parler-te-lalitha
+Telugu,te-IN,Kiran,male,Premium,Parler HD,slow,parler-te-kiran
+Telugu,te-IN,Prakash,male,Premium,Parler HD,slow,parler-te-prakash
+Gujarati,gu-IN,Khushi,female,Premium,IndicF5 HD,fast,if5-gu-f
+Gujarati,gu-IN,Krupa,female,Premium,Svara,fast,svara-gu-f
+Gujarati,gu-IN,Harsh,male,Premium,IndicF5 HD,fast,if5-gu-m
+Gujarati,gu-IN,Jignesh,male,Free,MMS,fast,mms-guj
+Gujarati,gu-IN,Parth,male,Premium,Svara,fast,svara-gu-m
+Gujarati,gu-IN,Meena (soft),female,Premium,Parler HD,slow,parler-gu-meena
+Gujarati,gu-IN,Neha,female,Premium,Parler HD,slow,parler-gu-neha
+Gujarati,gu-IN,Raj (deep),male,Premium,Parler HD,slow,parler-gu-raj
+Gujarati,gu-IN,Yash,male,Premium,Parler HD,slow,parler-gu-yash
+Malayalam,ml-IN,Meera,female,Free,Piper,fast,ml_IN-meera-medium
+Malayalam,ml-IN,Nithya,female,Premium,Svara,fast,svara-ml-f
+Malayalam,ml-IN,Arjun,male,Free,Piper,fast,ml_IN-arjun-medium
+Malayalam,ml-IN,Madhavan,male,Free,MMS,fast,mms-mal
+Malayalam,ml-IN,Unni,male,Premium,Svara,fast,svara-ml-m
+Malayalam,ml-IN,Anjali,female,Premium,Parler HD,slow,parler-ml-anjali
+Malayalam,ml-IN,Anju,female,Premium,Parler HD,slow,parler-ml-anju
+Malayalam,ml-IN,Harish,male,Premium,Parler HD,slow,parler-ml-harish
+Kannada,kn-IN,Nandini,female,Premium,Svara,fast,svara-kn-f
+Kannada,kn-IN,Girish,male,Free,MMS,fast,mms-kan
+Kannada,kn-IN,Raghu,male,Premium,Svara,fast,svara-kn-m
+Kannada,kn-IN,Anu,female,Premium,Parler HD,slow,parler-kn-anu
+Kannada,kn-IN,Vidya,female,Premium,Parler HD,slow,parler-kn-vidya
+Kannada,kn-IN,Chetan,male,Premium,Parler HD,slow,parler-kn-chetan
+Kannada,kn-IN,Suresh,male,Premium,Parler HD,slow,parler-kn-suresh
+Punjabi,pa-IN,Rupinder,female,Premium,Svara,fast,svara-pa-f
+Punjabi,pa-IN,Balwant,male,Premium,Svara,fast,svara-pa-m
+Punjabi,pa-IN,Ranbir,male,Free,MMS,fast,mms-pan
+Punjabi,pa-IN,Divjot,male,Premium,Parler HD,slow,parler-pa-divjot
+Punjabi,pa-IN,Gurpreet,male,Premium,Parler HD,slow,parler-pa-gurpreet
+Punjabi,pa-IN,Jass (deep),male,Premium,Parler HD,slow,parler-pa-jass
+Punjabi,pa-IN,Sukh (young),male,Premium,Parler HD,slow,parler-pa-sukh
+Tamil,ta-IN,Nila,female,Premium,Svara,fast,svara-ta-f
+Tamil,ta-IN,Thamarai,female,Free,MMS,fast,mms-tam
+Tamil,ta-IN,Muthu,male,Premium,Svara,fast,svara-ta-m
+Tamil,ta-IN,Anitha (soft),female,Premium,Parler HD,slow,parler-ta-anitha
+Tamil,ta-IN,Deepa (bright),female,Premium,Parler HD,slow,parler-ta-deepa
+Tamil,ta-IN,Jaya,female,Premium,Parler HD,slow,parler-ta-jaya
+Tamil,ta-IN,Kavitha,female,Premium,Parler HD,slow,parler-ta-kavitha
+Assamese,as-IN,Bhaswati,female,Premium,Svara,fast,svara-as-f
+Assamese,as-IN,Rituparna,female,Free,MMS,fast,mms-asm
+Assamese,as-IN,Poonam,female,Premium,Parler HD,slow,parler-as-poonam
+Assamese,as-IN,Sita,female,Premium,Parler HD,slow,parler-as-sita
+Assamese,as-IN,Amit,male,Premium,Parler HD,slow,parler-as-amit
+Assamese,as-IN,Rakesh,male,Premium,Parler HD,slow,parler-as-rakesh
+Odia,or-IN,Mamata,female,Premium,Svara,fast,svara-or-f
+Odia,or-IN,Bhagaban,male,Free,MMS,fast,mms-ory
+Odia,or-IN,Debjani,female,Premium,Parler HD,slow,parler-or-debjani
+Odia,or-IN,Priya (soft),female,Premium,Parler HD,slow,parler-or-priya
+Odia,or-IN,Bibhu (deep),male,Premium,Parler HD,slow,parler-or-bibhu
+Odia,or-IN,Manas,male,Premium,Parler HD,slow,parler-or-manas
+Sanskrit,sa-IN,Vagdevi,female,Premium,Svara,fast,svara-sa-f
+Sanskrit,sa-IN,Aryan,male,Premium,IndicF5 HD,fast,if5-sanskrit
+Sanskrit,sa-IN,Vāgdhenu (Sanskrit chant),male,Premium,Vagdhenu chant,fast,vagdhenu-sa-chant
+Sanskrit,sa-IN,Yajnesh,male,Premium,Svara,fast,svara-sa-m
+Sanskrit,sa-IN,Shaunak,male,Premium,Parler HD,slow,parler-sa-aryan
+Nepali,ne-NP,Muna,female,Free,Piper,fast,ne_NP-google-medium
+Nepali,ne-NP,Sunita,female,Premium,Svara,fast,svara-ne-f
+Nepali,ne-NP,Suman,male,Free,Piper,fast,ne_NP-chitwan-medium
+Nepali,ne-NP,Amrita,female,Premium,Parler HD,slow,parler-ne-amrita
+Bodo,brx-IN,Kalpana,female,Premium,Parler HD,slow,parler-brx-kalpana
+Bodo,brx-IN,Maya,female,Premium,Parler HD,slow,parler-brx-maya
+Bodo,brx-IN,Bikram,male,Premium,Parler HD,slow,parler-brx-bikram
+Chhattisgarhi,hne-IN,Champa,female,Premium,Parler HD,slow,parler-hne-champa
+Chhattisgarhi,hne-IN,Bhanu,male,Premium,Parler HD,slow,parler-hne-bhanu
+Manipuri,mni-IN,Laishram,male,Premium,Parler HD,slow,parler-mni-laishram
+Manipuri,mni-IN,Ranjit,male,Premium,Parler HD,slow,parler-mni-ranjit
+Dogri,doi-IN,Karan,male,Premium,Parler HD,slow,parler-doi-karan
+Maithili,mai-IN,Rewa,female,Free,MMS,fast,mms-mai
+English,en-GB,Aditi,female,Free,Piper,fast,en_GB-jenny_dioco-medium
+English,en-GB,Isha,female,Free,Kokoro,fast,bf_isabella
+English,en-GB,Priya,female,Free,Kokoro,fast,bf_emma
+English,en-GB,Aditya,male,Free,Kokoro,fast,bm_george
+English,en-GB,Vihaan,male,Free,Kokoro,fast,bm_fable
+English,en-IN,Anaya,female,Premium,Svara,fast,svara-en-f
+English,en-IN,Karan,male,Premium,Svara,fast,svara-en-m
+English,en-US,Ananya,female,Free,Kokoro,fast,af_aoede
+English,en-US,Aria,female,Premium,Chatterbox Expressive,fast,chatterbox-en-aria
+English,en-US,Naina,female,Free,Piper,fast,en_US-hfc_female-medium
+English,en-US,Pooja,female,Free,Piper,fast,en_US-amy-medium
+English,en-US,Prapti,female,Free,Kokoro,fast,af_heart
+English,en-US,Riya,female,Free,Piper,fast,en_US-lessac-high
+English,en-US,Sanghamitra,female,Free,Kokoro,fast,af_nicole
+English,en-US,Seema,female,Free,Kokoro,fast,af_bella
+English,en-US,Ayaan,male,Free,Kokoro,fast,am_michael
+English,en-US,Ishaan,male,Free,Piper,fast,en_US-ryan-high
+English,en-US,Ronith,male,Free,Kokoro,fast,am_fenrir
+English,en-US,Rounak,male,Free,Kokoro,fast,am_puck
+English,en-IN,Gauri (Indian),female,Premium,Parler HD,slow,parler-en-gauri
+English,en-IN,Kavya (Indian),female,Premium,Parler HD,slow,parler-en-kavya
+English,en-IN,Mary (Indian),female,Premium,Parler HD,slow,parler-en-mary
+English,en-IN,Meera (Indian),female,Premium,Parler HD,slow,parler-en-meera
+English,en-IN,Nisha (Indian),female,Premium,Parler HD,slow,parler-en-nisha
+English,en-IN,Priya (Indian),female,Premium,Parler HD,slow,parler-en-priya
+English,en-IN,Riya (Indian),female,Premium,Parler HD,slow,parler-en-riya
+English,en-IN,Sneha (Indian),female,Premium,Parler HD,slow,parler-en-sneha
+English,en-IN,Swapna (Indian),female,Premium,Parler HD,slow,parler-en-swapna
+English,en-IN,Tisha (Indian),female,Premium,Parler HD,slow,parler-en-tisha
+English,en-IN,Aakash (Indian),male,Premium,Parler HD,slow,parler-en-aakash
+English,en-IN,Chingkhei (Indian),male,Premium,Parler HD,slow,parler-en-chingkhei
+English,en-IN,Dinesh (Indian),male,Premium,Parler HD,slow,parler-en-dinesh
+English,en-IN,Jatin (Indian),male,Premium,Parler HD,slow,parler-en-jatin
+English,en-IN,Kabir (Indian),male,Premium,Parler HD,slow,parler-en-kabir
+English,en-IN,Raghav (Indian),male,Premium,Parler HD,slow,parler-en-raghav
+English,en-IN,Ravi (Indian),male,Premium,Parler HD,slow,parler-en-ravi
+English,en-IN,Tarun (Indian),male,Premium,Parler HD,slow,parler-en-tarun
+English,en-IN,Thoiba (Indian),male,Premium,Parler HD,slow,parler-en-thoiba
+English,en-IN,Thoma (Indian),male,Premium,Parler HD,slow,parler-en-thoma
+English,en-IN,Vikas (Indian),male,Premium,Parler HD,slow,parler-en-vikas
+Chinese (Mandarin),zh-CN,Lan,female,Free,Piper,fast,zh_CN-huayan-medium
+Chinese (Mandarin),zh-CN,Mei,female,Premium,Chatterbox Expressive,fast,chatterbox-zh-mei
+Chinese (Mandarin),zh-CN,Xiaobei,female,Free,Kokoro,fast,zf_xiaobei
+Chinese (Mandarin),zh-CN,Xiaoni,female,Free,Kokoro,fast,zf_xiaoni
+Chinese (Mandarin),zh-CN,Xiaoxiao,female,Free,Kokoro,fast,zf_xiaoxiao
+Chinese (Mandarin),zh-CN,Xiaoyi,female,Free,Kokoro,fast,zf_xiaoyi
+Chinese (Mandarin),zh-CN,Yunjian,male,Free,Kokoro,fast,zm_yunjian
+Chinese (Mandarin),zh-CN,Yunxi,male,Free,Kokoro,fast,zm_yunxi
+Chinese (Mandarin),zh-CN,Yunxia,male,Free,Kokoro,fast,zm_yunxia
+Chinese (Mandarin),zh-CN,Yunyang,male,Free,Kokoro,fast,zm_yunyang
+Dutch,nl-BE,Femke,female,Free,Piper,fast,nl_BE-nathalie-medium
+Dutch,nl-BE,Ruben,male,Free,Piper,fast,nl_BE-rdh-medium
+Dutch,nl-NL,Sanne,female,Premium,Chatterbox Expressive,fast,chatterbox-nl-sanne
+Dutch,nl-NL,Alex,male,Free,Piper,fast,nl_NL-alex-medium
+Dutch,nl-NL,Tijn,male,Free,Piper,fast,nl_NL-mls-medium
+Spanish,es-ES,Sofia,female,Premium,Chatterbox Expressive,fast,chatterbox-es-sofia
+Spanish,es-ES,Nicolás,male,Free,Piper,fast,es_ES-davefx-medium
+Spanish,es-ES,Álvaro,male,Free,Piper,fast,es_ES-sharvard-medium
+Spanish,es-MX,Lucía,female,Free,Piper,fast,es_MX-claude-high
+Spanish,es-MX,Tomás,male,Free,Piper,fast,es_MX-ald-medium
+Arabic,ar,Layla,female,Premium,Chatterbox Expressive,fast,chatterbox-ar-layla
+Arabic,ar-JO,Hassan,male,Free,Piper,fast,ar_JO-kareem-medium
+Arabic,ar-JO,Kareem,male,Free,Piper,fast,ar_JO-kareem-low
+Finnish,fi-FI,Aino,female,Premium,Chatterbox Expressive,fast,chatterbox-fi-aino
+Finnish,fi-FI,Harri,male,Free,Piper,fast,fi_FI-harri-low
+Finnish,fi-FI,Mikko,male,Free,Piper,fast,fi_FI-harri-medium
+French,fr-FR,Camille,female,Premium,Chatterbox Expressive,fast,chatterbox-fr-camille
+French,fr-FR,Élodie,female,Free,Piper,fast,fr_FR-siwis-medium
+French,fr-FR,Hugo,male,Free,Piper,fast,fr_FR-mls-medium
+German,de-DE,Lena,female,Premium,Chatterbox Expressive,fast,chatterbox-de-lena
+German,de-DE,Jonas,male,Free,Piper,fast,de_DE-thorsten-high
+German,de-DE,Thorsten,male,Free,Piper,fast,de_DE-mls-medium
+Greek,el-GR,Dafni,female,Free,Piper,fast,el_GR-rapunzelina-medium
+Greek,el-GR,Eleni,female,Premium,Chatterbox Expressive,fast,chatterbox-el-eleni
+Greek,el-GR,Maria,female,Free,Piper,fast,el_GR-joy-medium
+Italian,it-IT,Giulia,female,Premium,Chatterbox Expressive,fast,chatterbox-it-giulia
+Italian,it-IT,Paola,female,Free,Piper,fast,it_IT-paola-medium
+Italian,it-IT,Serena,female,Free,Piper,fast,it_IT-serena-high
+Polish,pl-PL,Zofia,female,Premium,Chatterbox Expressive,fast,chatterbox-pl-zofia
+Polish,pl-PL,Jakub,male,Free,Piper,fast,pl_PL-bass-high
+Polish,pl-PL,Piotr,male,Free,Piper,fast,pl_PL-darkman-medium
+Portuguese,pt-BR,Rafael,male,Free,Piper,fast,pt_BR-faber-medium
+Portuguese,pt-BR,Tiago,male,Free,Piper,fast,pt_BR-cadu-medium
+Portuguese,pt-PT,Beatriz,female,Premium,Chatterbox Expressive,fast,chatterbox-pt-beatriz
+Russian,ru-RU,Anya,female,Premium,Chatterbox Expressive,fast,chatterbox-ru-anya
+Russian,ru-RU,Dmitri,female,Free,Piper,fast,ru_RU-dmitri-medium
+Russian,ru-RU,Denis,male,Free,Piper,fast,ru_RU-denis-medium
+Swedish,sv-SE,Alma,female,Free,Piper,fast,sv_SE-alma-medium
+Swedish,sv-SE,Elsa,female,Premium,Chatterbox Expressive,fast,chatterbox-sv-elsa
+Swedish,sv-SE,Lisa,female,Free,Piper,fast,sv_SE-lisa-medium
+Catalan,ca-ES,Clara,female,Free,Piper,fast,ca_ES-upc_ona-x_low
+Catalan,ca-ES,Nuria,female,Free,Piper,fast,ca_ES-upc_ona-medium
+Czech,cs-CZ,Kasandra,female,Free,Piper,fast,cs_CZ-kasandra-medium
+Czech,cs-CZ,Jirka,male,Free,Piper,fast,cs_CZ-jirka-medium
+Danish,da-DK,Freja,female,Premium,Chatterbox Expressive,fast,chatterbox-da-freja
+Danish,da-DK,Jonas,male,Free,Piper,fast,da_DK-talesyntese-medium
+Hungarian,hu-HU,Anna,female,Free,Piper,fast,hu_HU-anna-medium
+Hungarian,hu-HU,Berta,female,Free,Piper,fast,hu_HU-berta-medium
+Icelandic,is-IS,Salka,female,Free,Piper,fast,is_IS-salka-medium
+Icelandic,is-IS,Jon,male,Free,Piper,fast,is_IS-bui-medium
+Kazakh,kk-KZ,Arman,male,Free,Piper,fast,kk_KZ-issai-high
+Kazakh,kk-KZ,Askar,male,Free,Piper,fast,kk_KZ-iseke-x_low
+Persian,fa-IR,Amir,male,Free,Piper,fast,fa_IR-amir-medium
+Persian,fa-IR,Reza,male,Free,Piper,fast,fa_IR-ganji-medium
+Swahili,sw-CD,Juma,male,Free,Piper,fast,sw_CD-lanfrica-medium
+Swahili,sw-KE,Zuri,female,Premium,Chatterbox Expressive,fast,chatterbox-sw-zuri
+Turkish,tr-TR,Elif,female,Premium,Chatterbox Expressive,fast,chatterbox-tr-elif
+Turkish,tr-TR,Kerem,male,Free,Piper,fast,tr_TR-dfki-medium
+Ukrainian,uk-UA,Mykyta,male,Free,Piper,fast,uk_UA-mykyta-high
+Ukrainian,uk-UA,Oleksa,male,Free,Piper,fast,uk_UA-oleksa-high
+Vietnamese,vi-VN,Mai,female,Free,Piper,fast,vi_VN-vais1000-medium
+Vietnamese,vi-VN,Thuy,female,Free,Piper,fast,vi_VN-25hours_single-low
+Georgian,ka-GE,Natia,female,Free,Piper,fast,ka_GE-natia-medium
+Hebrew,he-IL,Noa,female,Premium,Chatterbox Expressive,fast,chatterbox-he-noa
+Japanese,ja-JP,Sakura,female,Premium,Chatterbox Expressive,fast,chatterbox-ja-sakura
+Korean,ko-KR,Jiwoo,female,Premium,Chatterbox Expressive,fast,chatterbox-ko-jiwoo
+Latvian,lv-LV,Aivars,male,Free,Piper,fast,lv_LV-aivars-medium
+Luxembourgish,lb-LU,Anne,female,Free,Piper,fast,lb_LU-marylux-medium
+Malay,ms-MY,Nadia,female,Premium,Chatterbox Expressive,fast,chatterbox-ms-nadia
+Norwegian,nb-NO,Ingrid,female,Premium,Chatterbox Expressive,fast,chatterbox-no-ingrid
+Romanian,ro-RO,Mihai,male,Free,Piper,fast,ro_RO-mihai-medium
+Serbian,sr-RS,Nikola,male,Free,Piper,fast,sr_RS-serbski_institut-medium
+Slovak,sk-SK,Lili,female,Free,Piper,fast,sk_SK-lili-medium
+Slovenian,sl-SI,Artur,male,Free,Piper,fast,sl_SI-artur-medium
