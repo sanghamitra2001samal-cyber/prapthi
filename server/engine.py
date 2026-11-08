@@ -1063,6 +1063,83 @@ class ParlerEngine:
         finally:
             _TORCH_LOCK.release()
 
+    # The same model on the GPU box (deploy/gpu/parler_service.py), half
+    # precision: ~10 s for a 5 s sentence against 30-70 s here, and it does not
+    # hold _TORCH_LOCK, which is what made the MMS voices wait (measured 7 Nov
+    # 2026: 83 s instead of 2 s). Away while a song borrows the card, so after a
+    # failure this box renders on its own CPU for a while instead of paying a
+    # timeout on every request.
+    _GPU_RETRY_S = 30.0
+    _gpu_down_until = 0.0
+
+    @staticmethod
+    def gpu_enabled() -> bool:
+        return bool(os.environ.get("PARLER_GPU_URL", ""))
+
+    def _render_on_gpu(self, text: str, description: str):
+        """(int16 samples, rate) from the GPU service, or None to use the CPU."""
+        import io
+        import json
+        import time
+        import urllib.request
+        import wave
+
+        import numpy as np
+
+        url = os.environ.get("PARLER_GPU_URL", "")
+        if not url or time.monotonic() < ParlerEngine._gpu_down_until:
+            return None
+        req = urllib.request.Request(
+            url.rstrip("/") + "/tts",
+            data=json.dumps({"text": text, "description": description}).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=240) as r:
+                data = r.read()
+            with wave.open(io.BytesIO(data)) as wf:
+                sr = wf.getframerate()
+                pcm = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+            if pcm.size == 0:
+                raise ValueError("empty audio")
+            return pcm, sr
+        except Exception as e:                  # noqa: BLE001 — fall back
+            ParlerEngine._gpu_down_until = time.monotonic() + ParlerEngine._GPU_RETRY_S
+            print(f"[voxforge] Parler on GPU failed ({e!r}); using the CPU for "
+                  f"{ParlerEngine._GPU_RETRY_S:.0f}s", flush=True)
+            return None
+
+    def _render_on_cpu(self, text: str, description: str):
+        """(int16 samples, rate) from this box's own copy of the model."""
+        import numpy as np
+        import torch
+
+        use_bf16 = os.environ.get("VOXFORGE_BF16", "0") == "1"
+        # Serialize torch work (model load + generate) so a background warm-up
+        # or another request can never run torch inference concurrently.
+        with _TORCH_LOCK:
+            self._load()
+            dev = self._device
+            desc = self._desc_tok(description, return_tensors="pt").to(dev)
+            prompt = self._tok(text, return_tensors="pt").to(dev)
+            kwargs = dict(
+                input_ids=desc.input_ids,
+                attention_mask=desc.attention_mask,
+                prompt_input_ids=prompt.input_ids,
+                prompt_attention_mask=prompt.attention_mask,
+            )
+            with torch.inference_mode():
+                if use_bf16:
+                    try:
+                        with torch.autocast("cpu", dtype=torch.bfloat16):
+                            gen = self._model.generate(**kwargs)
+                    except Exception:
+                        gen = self._model.generate(**kwargs)  # fp32 fallback
+                else:
+                    gen = self._model.generate(**kwargs)
+            samples = gen.cpu().numpy().squeeze().astype(np.float32)
+            sr = int(self._model.config.sampling_rate)
+        return np.clip(samples * 32768.0, -32768, 32767).astype(np.int16), sr
+
     def _load(self):
         # Called under _TORCH_LOCK, which _unload takes too. About 4-5 GB on
         # CPU, used by few voices: freed when idle (idle_models).
@@ -1121,32 +1198,11 @@ class ParlerEngine:
             "close-microphone audio and no background noise."
         )
 
-        use_bf16 = os.environ.get("VOXFORGE_BF16", "0") == "1"
-        # Serialize torch work (model load + generate) so a background warm-up
-        # or another request can never run torch inference concurrently.
-        with _TORCH_LOCK:
-            self._load()
-            dev = self._device
-            desc = self._desc_tok(description, return_tensors="pt").to(dev)
-            prompt = self._tok(text, return_tensors="pt").to(dev)
-            kwargs = dict(
-                input_ids=desc.input_ids,
-                attention_mask=desc.attention_mask,
-                prompt_input_ids=prompt.input_ids,
-                prompt_attention_mask=prompt.attention_mask,
-            )
-            with torch.inference_mode():
-                if use_bf16:
-                    try:
-                        with torch.autocast("cpu", dtype=torch.bfloat16):
-                            gen = self._model.generate(**kwargs)
-                    except Exception:
-                        gen = self._model.generate(**kwargs)  # fp32 fallback
-                else:
-                    gen = self._model.generate(**kwargs)
-            samples = gen.cpu().numpy().squeeze().astype(np.float32)
-            sr = int(self._model.config.sampling_rate)
-        pcm = np.clip(samples * 32768.0, -32768, 32767).astype(np.int16)
+        on_gpu = self._render_on_gpu(text, description)
+        if on_gpu is not None:
+            pcm, sr = on_gpu
+        else:
+            pcm, sr = self._render_on_cpu(text, description)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
             wav_path = tf.name

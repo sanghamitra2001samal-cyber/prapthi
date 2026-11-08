@@ -68,6 +68,9 @@ _synth_waiting = 0
 # another and 20.3 s sent at once. Nothing on this box is touched by a svara
 # render, so it does not need the torch lock above — only a bound.
 _svara_sem = asyncio.Semaphore(int(os.environ.get("VOXFORGE_SVARA_PARALLEL", "3")))
+# Parler on the GPU box (PARLER_GPU_URL, 8 Nov 2026) likewise touches nothing
+# on this box; its service renders one at a time, so a small bound is enough.
+_parler_sem = asyncio.Semaphore(int(os.environ.get("VOXFORGE_PARLER_PARALLEL", "2")))
 # Streamed renders keep going after the listener leaves (so the finished take
 # is cached and already paid for); hold a reference so they are not collected.
 _STREAM_TASKS: set = set()
@@ -2607,9 +2610,13 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
                 print(f"[voxforge] refund failed: {e!r}")
 
     # svara renders on the GPU box and batches; everything else shares the
-    # torch lock on this box.
-    svara = not (clone or if5clone) and _voice_owner(voice_id)[0] == "SvaraEngine"
-    lock = _svara_sem if svara else _synth_lock
+    # torch lock on this box. Parler on the GPU box does not need it either:
+    # if the GPU is away it falls back to this box's CPU, where its engine
+    # takes _TORCH_LOCK itself, so correctness never depends on this choice.
+    owner = "" if (clone or if5clone) else _voice_owner(voice_id)[0]
+    svara = owner == "SvaraEngine"
+    parler_gpu = owner == "ParlerEngine" and bool(os.environ.get("PARLER_GPU_URL"))
+    lock = _svara_sem if svara else (_parler_sem if parler_gpu else _synth_lock)
 
     # Streaming: speak a passage sentence by sentence, sending each one the
     # moment it is ready, so playback starts after the first sentence instead
