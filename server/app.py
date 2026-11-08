@@ -808,7 +808,9 @@ async def if5_clone_create(request: Request) -> JSONResponse:
     ref_text = (request.query_params.get("ref_text") or "").strip()
     if not ref_text:
         try:
-            segs, _lang = await run_in_threadpool(dubbing.transcribe, str(out))
+            # The clone speaks from this text, so it gets the accurate model.
+            segs, _lang = await run_in_threadpool(
+                dubbing.transcribe, str(out), accurate=True, clean_hindi_ctc=True)
             ref_text = " ".join(s["text"] for s in segs)[:400]
         except Exception as e:
             print(f"[if5clone] transcribe failed: {e!r}")
@@ -1396,8 +1398,9 @@ def _run_dub_pipeline(jid: str, in_path: str, ext: str, tgt: str,
         wav = str(DUB_DIR / f"{jid}_src.wav")
         dubbing.extract_audio(in_path, wav)
 
-        _dub_jobs[jid].update(step="Transcribing (Whisper)", progress=30)
-        segs, src_lang = dubbing.transcribe(wav)
+        _dub_jobs[jid].update(step="Transcribing", progress=30)
+        # Every later step works from this text: accuracy over speed here.
+        segs, src_lang = dubbing.transcribe(wav, accurate=True, clean_hindi_ctc=True)
         if not segs:
             raise RuntimeError("no speech detected")
 

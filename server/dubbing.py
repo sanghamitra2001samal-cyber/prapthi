@@ -122,17 +122,100 @@ def _get_stt_accurate():
     return _stt_accurate
 
 
+# Spoken Hindi and Urdu are one language to Whisper. Left to guess, large-v3-turbo
+# labels Hindi as "ur" and writes it in Urdu script: on 90 s of studio Hindi with
+# known text (Nov 2026) it scored 23% character errors guessing, 8% told "hi"
+# (small: 20% either way). No dub target or voice takes Urdu script, so read it as Hindi.
+_GUESS_AS = {"ur": "hi"}
+
+
+def _guess_language(model, wav_path: str) -> str | None:
+    """One detection on the opening 30 s, so a long file is not re-guessed per window."""
+    from faster_whisper import decode_audio
+    try:
+        audio = decode_audio(wav_path, sampling_rate=16000)[: 30 * 16000]
+        lang, _prob, _all = model.detect_language(audio, vad_filter=True)
+    except Exception as e:  # silence or an odd file: let transcribe() detect as before
+        print(f"[stt] language detection failed: {e!r}")
+        return None
+    return _GUESS_AS.get(lang, lang)
+
+
+# Clean Hindi reads far better with the Vakyansh CTC model (fast_stt) than with any
+# Whisper, but it falls apart in noise. Character errors, Nov 2026, SYSPIN clips with
+# rain mixed in (clean: 24 clips; the rest: 16):
+#   noise (true SNR)   clean   30 dB   20 dB   15 dB   10 dB   5 dB
+#   Vakyansh           4.6%    5.9%    8.5%    13.4%   24.4%   40.6%
+#   large-v3-turbo     8.8%    9.5%    10.3%   12.3%   18.0%   26.4%
+# They cross near 17 dB. _estimate_snr read 26 dB at 20 and 21 dB at 15, so files it
+# puts at 24 dB or more go to Vakyansh. Calibrated on steady noise only; music unmeasured.
+_CTC_MIN_SNR_DB = float(os.environ.get("VOXFORGE_CTC_MIN_SNR_DB", "24"))
+
+
+def _estimate_snr(audio) -> float:
+    """Loudest vs quietest 25 ms frames (90th vs 10th percentile power), in dB.
+    Digital silence (edited-in gaps) is skipped so it cannot pass for a clean recording."""
+    import numpy as np
+    a = np.asarray(audio, dtype=np.float64)
+    if a.size < 16000:
+        return 0.0
+    c = np.concatenate([[0.0], np.cumsum(a * a)])
+    starts = np.arange(0, a.size - 400, 160)
+    power = (c[starts + 400] - c[starts]) / 400
+    power = power[power > 1e-8]                      # below -80 dBFS: digital silence
+    if power.size < 20:
+        return 0.0
+    return float(10 * np.log10(np.percentile(power, 90) / np.percentile(power, 10)))
+
+
+def _ctc_hindi_segments(audio) -> list[dict] | None:
+    """Hindi via fast_stt's Vakyansh worker. It returns text without timings, so speech
+    is first cut at pauses (at most 12 s a piece) and each piece read on its own, which
+    keeps the start/end times dubbing aligns to. None if the worker cannot be used."""
+    import numpy as np
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+    import fast_stt
+    spans = get_speech_timestamps(audio, VadOptions(
+        max_speech_duration_s=12, min_silence_duration_ms=500, speech_pad_ms=200))
+    segs = []
+    try:
+        for sp in spans:
+            piece = np.clip(audio[sp["start"]:sp["end"]], -1.0, 1.0)
+            text = fast_stt.transcribe_pcm((piece * 32767).astype("<i2").tobytes(), 16000)
+            if text:
+                segs.append({"start": sp["start"] / 16000, "end": sp["end"] / 16000, "text": text})
+    except Exception as e:  # worker died or timed out: the caller uses Whisper instead
+        print(f"[stt] Vakyansh unavailable ({e!r}); using Whisper")
+        return None
+    return segs
+
+
 def transcribe(wav_path: str, language: str | None = None, vad: bool = True,
-               stt: bool = False, accurate: bool = False) -> tuple[list[dict], str]:
+               stt: bool = False, accurate: bool = False,
+               clean_hindi_ctc: bool = False) -> tuple[list[dict], str]:
     """Return ([{start,end,text}], language).
 
     language: a Whisper code ("hi", "en", ...) to skip auto-detection, which misreads short
     Hindi answers as English. vad=False keeps very short replies ("हाँ") that the silence
     filter would drop; use it for clips already trimmed to the utterance. stt=True uses the
     /transcribe model instead of the dubbing one; accurate=True the larger model the studio's
-    Speech to Text page uses.
+    Speech to Text page uses, which then detects the language itself (see _GUESS_AS).
+    clean_hindi_ctc=True reads clean Hindi with Vakyansh instead (see _CTC_MIN_SNR_DB); its
+    text has no punctuation, so only callers that don't show it to people should ask.
     """
     model = _get_stt_accurate() if accurate else (_get_stt() if stt else _get_whisper())
+    if accurate and not language:
+        language = _guess_language(model, wav_path)
+    if clean_hindi_ctc and language == "hi":
+        from faster_whisper import decode_audio
+        audio = decode_audio(wav_path, sampling_rate=16000)
+        snr = _estimate_snr(audio)
+        if snr >= _CTC_MIN_SNR_DB:
+            segs = _ctc_hindi_segments(audio)
+            if segs:
+                print(f"[stt] Hindi at ~{snr:.0f} dB: Vakyansh")
+                return segs, "hi"
+        print(f"[stt] Hindi at ~{snr:.0f} dB: Whisper")
     segments, info = model.transcribe(wav_path, vad_filter=vad, beam_size=5,
                                       language=language or None)
     segs = []
