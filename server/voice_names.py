@@ -91,6 +91,13 @@ _POOLS: dict[str, dict[str, list[str]]] = {
     "en": {"female": ["Evelyn", "Clara", "Harper", "Nora", "Freya", "Iris"],
            "male":   ["Julian", "Nathan", "Elliot", "Miles", "Owen", "Felix"]},
 }
+# Spare names, used only when a language's pool is used up. Kept apart because
+# lengthening a pool would move every voice whose name comes from a hash of the
+# pool (svara-bho-f is "Sushma" by hash), renaming voices customers know.
+_SPARE = {
+    "bho": {"female": ["Sunita", "Lalita", "Savitri", "Shanti"],
+            "male":   ["Dinesh", "Santosh", "Manoj", "Rajan"]},
+}
 # Indian English should sound Indian, not Western.
 _POOLS["en-IN"] = {"female": ["Anaya", "Rhea", "Tanvi", "Aditi"],
                    "male":   ["Rohit", "Karan", "Vivek", "Nikhil"]}
@@ -208,10 +215,15 @@ def pretty_all(rows: list[tuple[str, str, str, str]]) -> dict[str, str]:
 
     Done as a batch because uniqueness cannot be decided one voice at a time.
     Sorted by voice id so the result is identical on every call — a voice must
-    not be renamed just because the catalogue was rebuilt."""
+    not be renamed just because the catalogue was rebuilt.
+
+    Parler voices are named last. Until 6 Nov 2026 most of them were hidden;
+    in plain id order, showing them took names customers already knew
+    (Bhojpuri "Sushma" became "Gita 2"). Named last, they get whatever is free
+    and every voice that was already in the picker keeps its name."""
     out: dict[str, str] = {}
     taken: dict[str, set[str]] = {}
-    for vid, raw, lang, gender in sorted(rows, key=lambda r: r[0]):
+    for vid, raw, lang, gender in sorted(rows, key=lambda r: (r[0].startswith("parler-"), r[0])):
         key = (lang or "en").split("-")[0].lower()
         used = taken.setdefault(key, set())
         name = pretty(vid, raw, lang, gender)
@@ -221,8 +233,9 @@ def pretty_all(rows: list[tuple[str, str, str, str]]) -> dict[str, str]:
             # walk the pool from this voice's own starting point, so the
             # alternative is still deterministic for this voice
             start = int(hashlib.sha1(vid.encode()).hexdigest()[:8], 16) % len(names)
-            for i in range(len(names)):
-                cand = names[(start + i) % len(names)]
+            spare = _SPARE.get(key, {}).get((gender or "female").lower(), [])
+            order = [names[(start + i) % len(names)] for i in range(len(names))] + spare
+            for cand in order:
                 if cand not in used:
                     name = cand
                     break
