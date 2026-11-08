@@ -99,6 +99,17 @@ _REPEAT_PUNCT = re.compile(r"([,;:.!?।])\1+")
 _NONSPEECH = re.compile(r"[*_~^`|<>{}\\=+#@]+")
 
 
+def _native_script(text: str, voice_id: str) -> str:
+    """English words inside Bengali, Telugu, Tamil or Marathi text, rewritten
+    in the voice's own script, spelt from how the word sounds. None of those
+    engines can read Latin: MMS deletes it, svara can derail (Bengali once came
+    back as Sinhala). Measured 6 Nov 2026 on the English-word test sentences:
+    Telugu 21% -> 10% wrong, Marathi 17% -> 9%, Bengali's hardest 19-29% -> 5-10%.
+    Other voices: unchanged."""
+    lang = hinglish.script_language(voice_id)
+    return hinglish.to_script(text, lang) if lang else text
+
+
 def normalize_speech_text(text: str, lang: str = "") -> str:
     """Clean user text so TTS sounds right:
     * numbers, money, dates, times and codes become words (hi / bho / en)
@@ -1808,8 +1819,8 @@ def _run_audiobook(jid: str, text: str, voice: str, gap_ms: int) -> None:
                 step=f"Narrating {i + 1}/{len(chunks)}",
                 progress=5 + int(85 * i / len(chunks)))
             t = normalize_speech_text(ch, _speech_lang(voice))
-            if is_hi:
-                t = hinglish.to_devanagari(t)
+            t = _native_script(t, voice) if hinglish.script_language(voice) else (
+                hinglish.to_devanagari(t) if is_hi else t)
             wavb, _m = ENGINE.synthesize(
                 text=t, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="wav")
             p = str(BOOK_DIR / f"{jid}_p{i}.wav")
@@ -1900,8 +1911,8 @@ def _run_audionative(aid: str, text: str, voice: str, title: str, owner: str) ->
         for i, ch in enumerate(chunks):
             _an_jobs[aid].update(progress=10 + int(80 * i / len(chunks)))
             t = normalize_speech_text(ch, _speech_lang(voice))
-            if is_hi:
-                t = hinglish.to_devanagari(t)
+            t = _native_script(t, voice) if hinglish.script_language(voice) else (
+                hinglish.to_devanagari(t) if is_hi else t)
             if voice.startswith("if5-"):
                 ref = _if5_ref(voice)
                 wavb, _m = if5_synth(t, ref[0], ref[1], fmt="wav") if ref else (b"", "")
@@ -2049,7 +2060,9 @@ def _run_ads(aid: str, brief: str, lang: str, voice: str, tone: str, seconds: in
                             {"role": "user", "content": userp}], max_tokens=320).strip()
         _ads_jobs[aid].update(step="Voicing", progress=70)
         t = normalize_speech_text(script, _speech_lang(voice) or lang)
-        if hinglish.is_hindi_voice(voice) or voice.startswith("if5") or lang == "hi":
+        if hinglish.script_language(voice):
+            t = _native_script(t, voice)
+        elif hinglish.is_hindi_voice(voice) or voice.startswith("if5") or lang == "hi":
             t = hinglish.to_devanagari(t)
         audio = _ads_synth(t, voice)
         ADS_DIR.mkdir(exist_ok=True)
@@ -2355,15 +2368,13 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         # Hinglish: for Hindi voices, convert common romanized Hindi words to
         # Devanagari so they're pronounced natively (QA #3/#4, best-effort).
         # Sanskrit voices are excluded — the dictionary is Hindi-specific.
-        if (
+        if hinglish.script_language(voice_id):
+            text = _native_script(text, voice_id)
+        elif (
             hinglish.is_hindi_voice(voice_id) or voice_id.startswith("if5")
         ) and voice_id not in SANSKRIT_VOICES:
             text = hinglish.to_devanagari(
                 text, speak_english=_needs_english_in_devanagari(voice_id))
-        elif hinglish.is_bengali_voice(voice_id):
-            # Same reason as above, different script. None of the Bengali
-            # engines can read Latin: MMS deletes it, svara can derail.
-            text = hinglish.to_bengali(text, speak_english=True)
 
     try:
         rate = float(body.get("rate", 1.0))

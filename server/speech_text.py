@@ -18,13 +18,26 @@ Indian grouping (5,00,000) and anything in rupees is read in lakh and crore in
 English too, because that is how Indian listeners say it. Western grouping
 without a currency stays Western.
 
-Only `expand(text, lang)` is public. Languages other than hi / bho / en pass
-through unchanged.
+Tamil, Telugu, Bengali and Marathi get the same treatment (see _IndicLang).
+Measured 6 Nov 2026 on the live voices: a sentence with "₹1,500", "15/08/2026",
+"10:30" or "25%" came back 20-74% wrong (per-language Vakyansh recogniser,
+character error) against 0-12% for the same sentence written out in words,
+on every engine. The digits were read as invented words ("₹1,500" in Tamil
+came out as "ஏய்த்தா பன்தீசா பஞ்சார"), or skipped (IndicF5 clips ran 25-53%
+short).
+
+Only `expand(text, lang)` is public. Other languages pass through unchanged.
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
+
+try:  # AI4Bharat's number tables (MIT); without them ta/te/bn/mr pass through
+    from indic_numtowords import num2words as _indic_num2words
+except Exception:  # noqa: BLE001 — a missing optional package must not stop speech
+    _indic_num2words = None
 
 # --------------------------------------------------------------------------- #
 # Hindi number words. 1-99 are all irregular in Hindi, so they are a table.
@@ -305,19 +318,272 @@ class _Lang:
             return f"{n_text} {hi}"
         return f"{n_text} {one if n_value == 1 else many}"
 
+    # -- pieces expand() asks every language for -------------------------- #
+    @property
+    def plus(self) -> str:
+        return "प्लस" if self.hi else "plus"
+
+    @property
+    def and_word(self) -> str:
+        return "और" if self.hi else "and"
+
+    def range(self, a: str, b: str) -> str:
+        return f"{a}{self.range_join()}{b}"
+
+    def year(self, n: int) -> str:
+        return _hi_number(n) if self.hi else _en_year(n)
+
+    def scaled_money(self, amount: str, scale: str, symbol: str) -> str:
+        """₹5 lakh, $2 crore: the amount is already in words."""
+        lakh = scale.startswith(("lakh", "लाख"))
+        if self.hi:
+            word = "लाख" if lakh else "करोड़"
+            unit = "डॉलर" if symbol == "$" else ("रुपया" if self.code == "bho" else "रुपये")
+        else:
+            word = "lakh" if lakh else "crore"
+            unit = "dollars" if symbol == "$" else "rupees"
+        return f"{amount} {word} {unit}"
+
+    def time_context(self, out: str, before: str, after: str) -> str:  # noqa: ARG002
+        return out
+
+
+# --------------------------------------------------------------------------- #
+# Tamil, Telugu, Bengali, Marathi. Cardinals come from AI4Bharat's tables;
+# everything a sentence wraps around them (rupees, months, percent, the way a
+# time is said) is here, written the way it is read aloud, not as written in
+# a form. Bengali and Marathi count money and time like Hindi (साडे / সাড়ে).
+# --------------------------------------------------------------------------- #
+_INDIC = {
+    "ta": {
+        "rupee": "ரூபாய்", "rupee1": "ரூபாய்", "paise": "பைசா",
+        "dollar": "டாலர்", "cent": "சென்ட்", "percent": "சதவீதம்",
+        "point": "புள்ளி", "plus": "பிளஸ்", "and": "மற்றும்",
+        "lakh": "லட்சம்", "crore": "கோடி", "range": "{a} முதல் {b}",
+        "months": "ஜனவரி பிப்ரவரி மார்ச் ஏப்ரல் மே ஜூன் ஜூலை ஆகஸ்ட் செப்டம்பர் "
+                  "அக்டோபர் நவம்பர் டிசம்பர்",
+        "day": ("காலை", "மதியம்", "மாலை", "இரவு"),
+        "units": {"km": "கிலோமீட்டர்", "kg": "கிலோ", "g": "கிராம்", "gm": "கிராம்",
+                  "cm": "சென்டிமீட்டர்", "mm": "மில்லிமீட்டர்", "m": "மீட்டர்",
+                  "ml": "மில்லிலிட்டர்", "l": "லிட்டர்", "kmph": "கிலோமீட்டர் வேகம்",
+                  "km/h": "கிலோமீட்டர் வேகம்", "hrs": "மணி நேரம்", "hr": "மணி நேரம்",
+                  "min": "நிமிடம்", "mins": "நிமிடம்", "sec": "வினாடி", "gb": "ஜிபி",
+                  "mb": "எம்பி", "°c": "டிகிரி செல்சியஸ்"},
+    },
+    "te": {
+        "rupee": "రూపాయలు", "rupee1": "రూపాయి", "paise": "పైసలు",
+        "dollar": "డాలర్లు", "cent": "సెంట్లు", "percent": "శాతం",
+        "point": "పాయింట్", "plus": "ప్లస్", "and": "మరియు",
+        "lakh": "లక్షల", "crore": "కోట్ల", "range": "{a} నుండి {b}",
+        "months": "జనవరి ఫిబ్రవరి మార్చి ఏప్రిల్ మే జూన్ జూలై ఆగస్టు సెప్టెంబర్ "
+                  "అక్టోబర్ నవంబర్ డిసెంబర్",
+        "day": ("ఉదయం", "మధ్యాహ్నం", "సాయంత్రం", "రాత్రి"),
+        "units": {"km": "కిలోమీటర్లు", "kg": "కిలోలు", "g": "గ్రాములు", "gm": "గ్రాములు",
+                  "cm": "సెంటీమీటర్లు", "mm": "మిల్లీమీటర్లు", "m": "మీటర్లు",
+                  "ml": "మిల్లీలీటర్లు", "l": "లీటర్లు", "kmph": "కిలోమీటర్ల వేగం",
+                  "km/h": "కిలోమీటర్ల వేగం", "hrs": "గంటలు", "hr": "గంటలు",
+                  "min": "నిమిషాలు", "mins": "నిమిషాలు", "sec": "సెకన్లు", "gb": "జీబీ",
+                  "mb": "ఎంబీ", "°c": "డిగ్రీల సెల్సియస్"},
+    },
+    "bn": {
+        "rupee": "টাকা", "rupee1": "টাকা", "paise": "পয়সা",
+        "dollar": "ডলার", "cent": "সেন্ট", "percent": "শতাংশ",
+        "point": "দশমিক", "plus": "প্লাস", "and": "এবং",
+        "lakh": "লাখ", "crore": "কোটি", "range": "{a} থেকে {b}",
+        "months": "জানুয়ারি ফেব্রুয়ারি মার্চ এপ্রিল মে জুন জুলাই আগস্ট সেপ্টেম্বর "
+                  "অক্টোবর নভেম্বর ডিসেম্বর",
+        "day": ("সকাল", "দুপুর", "বিকেল", "রাত"),
+        "units": {"km": "কিলোমিটার", "kg": "কেজি", "g": "গ্রাম", "gm": "গ্রাম",
+                  "cm": "সেন্টিমিটার", "mm": "মিলিমিটার", "m": "মিটার",
+                  "ml": "মিলিলিটার", "l": "লিটার", "kmph": "কিলোমিটার প্রতি ঘণ্টা",
+                  "km/h": "কিলোমিটার প্রতি ঘণ্টা", "hrs": "ঘণ্টা", "hr": "ঘণ্টা",
+                  "min": "মিনিট", "mins": "মিনিট", "sec": "সেকেন্ড", "gb": "জিবি",
+                  "mb": "এমবি", "°c": "ডিগ্রি সেলসিয়াস"},
+    },
+    "mr": {
+        "rupee": "रुपये", "rupee1": "रुपया", "paise": "पैसे",
+        "dollar": "डॉलर", "cent": "सेंट", "percent": "टक्के",
+        "point": "पूर्णांक", "plus": "प्लस", "and": "आणि",
+        "lakh": "लाख", "crore": "कोटी", "range": "{a} ते {b}",
+        "months": "जानेवारी फेब्रुवारी मार्च एप्रिल मे जून जुलै ऑगस्ट सप्टेंबर "
+                  "ऑक्टोबर नोव्हेंबर डिसेंबर",
+        "day": ("सकाळी", "दुपारी", "संध्याकाळी", "रात्री"),
+        "units": {"km": "किलोमीटर", "kg": "किलो", "g": "ग्रॅम", "gm": "ग्रॅम",
+                  "cm": "सेंटीमीटर", "mm": "मिलीमीटर", "m": "मीटर",
+                  "ml": "मिलीलीटर", "l": "लीटर", "kmph": "किलोमीटर प्रति तास",
+                  "km/h": "किलोमीटर प्रति तास", "hrs": "तास", "hr": "तास",
+                  "min": "मिनिटे", "mins": "मिनिटे", "sec": "सेकंद", "gb": "जीबी",
+                  "mb": "एमबी", "°c": "डिग्री सेल्सिअस"},
+    },
+}
+# Bengali reads a date's day as an ordinal: পয়লা, দোসরা, পনেরোই, একুশে.
+_BN_DAY = {1: "পয়লা", 2: "দোসরা", 3: "তেসরা", 4: "চৌঠা"}
+# The year in hundreds, as said aloud: উনিশশো / एकोणीसशे / పందొమ్మిది వందల.
+_HUNDREDS_YEAR = {"bn": "{c}শো", "mr": "{c}शे", "te": "{c} వందల"}
+# "One" before a noun is its own word in Tamil and Telugu: ஒரு ரூபாய், ఒక రూపాయి.
+_ONE_BEFORE_NOUN = {"ta": "ஒரு", "te": "ఒక"}
+# A noun after a Telugu number takes the oblique: వేలు -> వేల రూపాయలు.
+_TE_OBLIQUE = re.compile(r"(వందలు|వేలు|లక్షలు|కోట్లు)$")
+_INDIC_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯०१२३४५६७८९౦౧౨౩౪౫౬౭౮౯௦௧௨௩௪௫௬௭௮௯",
+                              "0123456789" * 4)
+
+
+class _IndicLang:
+    """The _Lang interface for ta / te / bn / mr."""
+
+    hi = False
+
+    def __init__(self, code: str):
+        self.code = code
+        self.v = _INDIC[code]
+        self.months = self.v["months"].split()
+
+    def int(self, n: int, indian: bool = True) -> str:  # noqa: ARG002 — always Indian
+        # The package handles up to 9 digits; beyond that it raises (it
+        # iterates an int), which took whole requests down on 7 Nov 2026. A
+        # number that long is an ID or account number: read it digit by digit.
+        if n >= 10**9:
+            return " ".join(self.int(int(d)) for d in str(n))
+        words = _indic_num2words(n, lang=self.code).replace("\u200c", "")   # ZWNJ
+        if self.code == "mr":
+            words = words.replace("\u093c", "")    # Marathi writes हजार, not हज़ार
+        elif self.code == "ta":
+            words = words.replace("தொண்ணூரெட்டு", "தொண்ணூற்றெட்டு")   # 98, misspelt upstream
+        # NFC: the tables spell some vowels decomposed (Telugu ై as ె + U+0C56),
+        # which looks the same but is not the text an engine was trained on.
+        return unicodedata.normalize("NFC", " ".join(words.split()))
+
+    def digit(self, d: str) -> str:
+        return self.int(int(d))
+
+    def _noun(self, words: str) -> str:
+        if self.code != "te":
+            return words
+        return _TE_OBLIQUE.sub(lambda m: m.group(1)[:-2] + "ల", words)
+
+    def money(self, whole: int, paise: int, indian: bool, symbol: str) -> str:  # noqa: ARG002
+        v = self.v
+        if symbol == "$":
+            unit, sub = v["dollar"], v["cent"]
+        else:
+            unit, sub = (v["rupee1"] if whole == 1 else v["rupee"]), v["paise"]
+        amount = _ONE_BEFORE_NOUN.get(self.code) if whole == 1 else None
+        out = f"{amount or self._noun(self.int(whole))} {unit}"
+        if paise:
+            out += f" {self.int(paise)} {sub}"
+        return out
+
+    def scaled_money(self, amount: str, scale: str, symbol: str) -> str:
+        word = self.v["lakh" if scale.startswith(("lakh", "लाख")) else "crore"]
+        return f"{amount} {word} {self.v['dollar'] if symbol == '$' else self.v['rupee']}"
+
+    def percent(self, num: str) -> str:
+        return f"{self.decimal(num)} {self.v['percent']}"
+
+    def decimal(self, num: str) -> str:
+        num = num.replace(",", "")
+        if "." not in num:
+            return self.int(int(num))
+        whole, frac = num.split(".", 1)
+        return (f"{self.int(int(whole or 0))} {self.v['point']} "
+                + " ".join(self.digit(d) for d in frac))
+
+    def year(self, n: int) -> str:
+        if self.code in _HUNDREDS_YEAR and 1100 <= n <= 1999 and (n // 100) % 10:
+            c, rest = divmod(n, 100)
+            out = _HUNDREDS_YEAR[self.code].format(c=self.int(c))
+            return out + (f" {self.int(rest)}" if rest else "")
+        return self.int(n)
+
+    def date(self, d: int, m: int, y: int | None) -> str:
+        month = self.months[m - 1]
+        year = f" {self.year(y)}" if y else ""
+        if self.code == "bn":
+            day = _BN_DAY.get(d) or self.int(d) + ("ই" if d <= 18 else "শে")
+            return f"{day} {month}" + ("," + year if year else "")
+        if self.code == "mr":
+            return f"{self.int(d)} {month}{year}"
+        return f"{month} {self.int(d)}" + ("," + year if year else "")    # ta, te
+
+    def time(self, h: int, m: int, ampm: str) -> str:
+        ampm = ampm.lower().replace(".", "")
+        h24 = h + 12 if ampm == "pm" and h < 12 else (0 if ampm == "am" and h == 12 else h)
+        part = ""
+        if ampm or h > 12:
+            morning, noon, evening, night = self.v["day"]
+            part = (night if h24 < 4 or h24 >= 20 else morning if h24 < 12
+                    else noon if h24 < 16 else evening)
+        h12 = h24 % 12 or 12
+        nxt = h12 % 12 + 1
+        n = self.int
+        if self.code == "bn":
+            if m == 0:
+                spoken = f"{n(h12)}টা"
+            elif m == 30:
+                spoken = {1: "দেড়টা", 2: "আড়াইটা"}.get(h12, f"সাড়ে {n(h12)}টা")
+            elif m == 15:
+                spoken = f"সোয়া {n(h12)}টা"
+            elif m == 45:
+                spoken = f"পৌনে {n(nxt)}টা"
+            else:
+                spoken = f"{n(h12)}টা বেজে {n(m)} মিনিট"
+        elif self.code == "mr":
+            if m == 0:
+                spoken = n(h12)
+            elif m == 30:
+                spoken = {1: "दीड", 2: "अडीच"}.get(h12, f"साडे{n(h12)}")
+            elif m == 15:
+                spoken = f"सव्वा {n(h12)}"
+            elif m == 45:
+                spoken = f"पावणे {n(nxt)}"
+            else:
+                spoken = f"{n(h12)} वाजून {n(m)} मिनिटे"
+        else:                                          # ta, te: "பத்து முப்பது"
+            spoken = n(h12) if m == 0 else f"{n(h12)} {n(m)}"
+        return f"\x03{part}\x03{spoken}" if part else spoken
+
+    def time_context(self, out: str, before: str, after: str) -> str:
+        """Drop what the customer already wrote around the time: the part of
+        day before it ("காலை 10:30"), and in Bengali the টা in "10:30 টায়"."""
+        if out.startswith("\x03"):
+            _, part, rest = out.split("\x03", 2)
+            out = rest if before.rstrip().endswith(part) else f"{part} {rest}"
+        if self.code == "bn" and out.endswith("টা") and re.match(r"\s*টা", after):
+            out = out[:-2] + "\x04"   # "সাড়ে দশটা" + " টায়" -> "সাড়ে দশটায়"
+        return out
+
+    def range(self, a: str, b: str) -> str:
+        return self.v["range"].format(a=a, b=b)
+
+    def unit(self, key: str, n_text: str, n_value: float) -> str:  # noqa: ARG002
+        return f"{n_text} {self.v['units'][key]}"
+
+    @property
+    def plus(self) -> str:
+        return self.v["plus"]
+
+    @property
+    def and_word(self) -> str:
+        return self.v["and"]
+
 
 # --------------------------------------------------------------------------- #
 # Patterns, applied in this order (each consumes what it matches).
 # --------------------------------------------------------------------------- #
-_NUM = r"\d[\d,]*(?:\.\d+)?"
+# A number never ends in a comma: in "₹1,500, then" that comma is a pause.
+_NUM = r"\d(?:[\d,]*\d)?(?:\.\d+)?"
 # Grouped numbers count as a phone number from 10 digits (an Indian mobile;
 # toll-free 1800 numbers have 11), so "2024-2025" stays a range of years.
 _PHONE = re.compile(r"(?<![\d.,])\+?\d{2,5}(?:[ -]\d{2,5}){1,4}(?!\d|[.,]\d)|(?<![\d.,])\+?\d{7,}(?!\d|[.,]\d)")
 _MONEY = re.compile(
-    r"(₹|\bRs\.?|\bINR|\$)\s?(\d[\d,]*)(?:\.(\d{1,2}))?(?!\d)"
-    r"(?:\s?(lakhs?|crores?|लाख|करोड़|k)(?![A-Za-z\u0900-\u097F]))?", re.IGNORECASE)
-_MONEY_AFTER = re.compile(r"(?<![\d.])(\d[\d,]*)(?:\.(\d{1,2}))?\s?(?:/-|₹)")
-_PERCENT = re.compile(r"(?<![\d.])(\d[\d,]*(?:\.\d+)?)\s?%")
+    r"(₹|\bRs\.?|\bINR|\$)\s?(\d(?:[\d,]*\d)?)(?:\.(\d{1,2}))?(?!\d)"
+    r"(?:\s?(lakhs?|crores?|लाख|करोड़|कोटी|லட்சம்|கோடி|లక్షల|లక్షలు|లక్ష|కోట్ల|కోట్లు|కోటి|লাখ|কোটি|k)"
+    r"(?![A-Za-z\u0900-\u0DFF]))?", re.IGNORECASE)
+_LAKH_WORDS = ("lakh", "लाख", "லட்ச", "లక్ష", "লাখ")
+_SAYS_RUPEES = re.compile(r"\s*(?:rupee|रुपय|रुपए|ரூபா|రూపా|টাকা)", re.IGNORECASE)
+_RUPEE_WORD = re.compile(r"\s(?:rupees?|रुपये|रुपया|ரூபாய்|రూపాయలు|రూపాయి|টাকা)(?=\s|$)")
+_MONEY_AFTER = re.compile(r"(?<![\d.])(\d(?:[\d,]*\d)?)(?:\.(\d{1,2}))?\s?(?:/-|₹)")
+_PERCENT = re.compile(r"(?<![\d.])(\d(?:[\d,]*\d)?(?:\.\d+)?)\s?%")
 _TIME = re.compile(r"(?<!\d)([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d)(?:\s?([ap]\.?m\.?)(?![a-z]))?", re.IGNORECASE)
 _DATE = re.compile(r"(?<![\d/.-])(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})(?!\d|[/.-]\d)")
 _DAY_MONTH_EN = re.compile(
@@ -347,12 +613,29 @@ def _parse_int(s: str) -> int:
 
 
 def expand(text: str, lang: str) -> str:
-    """Rewrite numbers, money, dates, times, units and (for Hindi) acronyms
-    into words for `lang` ("hi", "bho" or "en"). Other languages pass through."""
-    lang = (lang or "").lower().split("-")[0]
-    if lang not in ("hi", "bho", "en") or not text:
+    """See _expand. Reading numbers aloud must never fail a request: if it
+    raises, the text goes to the voice as written."""
+    try:
+        return _expand(text, lang)
+    except Exception as e:  # noqa: BLE001
+        print(f"[voxforge] speech_text.expand({lang!r}) failed, text left as written: {e!r}")
         return text
-    L = _Lang(lang)
+
+
+def _expand(text: str, lang: str) -> str:
+    """Rewrite numbers, money, dates, times, units and (for Hindi) acronyms
+    into words for `lang` ("hi", "bho", "en", "ta", "te", "bn" or "mr").
+    Other languages pass through."""
+    lang = (lang or "").lower().split("-")[0]
+    if not text:
+        return text
+    if lang in _INDIC and _indic_num2words is not None:
+        L = _IndicLang(lang)
+        text = text.translate(_INDIC_DIGITS)      # ১৫ / १५ / ౧౫ / ௧௫ -> 15
+    elif lang in ("hi", "bho", "en"):
+        L = _Lang(lang)
+    else:
+        return text
 
     def phone(m: re.Match) -> str:
         s = m.group(0)
@@ -364,10 +647,10 @@ def expand(text: str, lang: str) -> str:
         spoken = []
         for g in groups:
             if g == "+":
-                spoken.append("प्लस" if L.hi else "plus")
+                spoken.append(L.plus)
             else:
                 spoken.append(" ".join(L.digit(d) for d in g))
-        return ", ".join(spoken).replace("प्लस,", "प्लस").replace("plus,", "plus")
+        return ", ".join(spoken).replace(f"{L.plus},", L.plus)
 
     def code(m: re.Match) -> str:
         return m.group(1) + "\x01" + " ".join(L.digit(d) for d in m.group(2)) + "\x02"
@@ -380,16 +663,24 @@ def expand(text: str, lang: str) -> str:
             if s in ("k",):
                 n = _parse_int(whole) * 1000
                 return L.money(n, 0, True, sym)
-            word = ("लाख" if s.startswith(("lakh", "लाख")) else "करोड़") if L.hi else \
-                   ("lakh" if s.startswith(("lakh", "लाख")) else "crore")
             amount = L.decimal(whole + (f".{paise}" if paise else ""))
-            unit = ("रुपया" if lang == "bho" else "रुपये") if L.hi else "rupees"
-            if sym == "$":
-                unit = "डॉलर" if L.hi else "dollars"
-            return f"{amount} {word} {unit}"
+            lakh = s.startswith(_LAKH_WORDS)
+            return L.scaled_money(amount, "lakh" if lakh else "crore", sym)
         p = int((paise or "0").ljust(2, "0")) if paise else 0
         indian = sym == "₹" or bool(_INDIAN_GROUPING.match(whole))
         return L.money(_parse_int(whole), p, indian, sym)
+
+    def once(fn):
+        """"₹500 रुपये" / "₹5 lakh টাকার": the customer already says the
+        currency, so the amount is read as a bare number."""
+        def run(m: re.Match) -> str:
+            out = fn(m)
+            if m.group(1) != "$" and not m.group(3) and _SAYS_RUPEES.match(m.string, m.end()):
+                out = _RUPEE_WORD.sub("", out).rstrip()
+            return out
+        return run
+
+    money = once(money)
 
     def money_after(m: re.Match) -> str:
         p = int((m.group(2) or "0").ljust(2, "0")) if m.group(2) else 0
@@ -400,7 +691,7 @@ def expand(text: str, lang: str) -> str:
         # "3.5" is a decimal, not a time: a dotted time needs am/pm or 2 digits
         if m.group(0)[len(m.group(1))] == "." and not ampm:
             return m.group(0)
-        return L.time(h, mi, ampm)
+        return L.time_context(L.time(h, mi, ampm), m.string[:m.start()], m.string[m.end():])
 
     def date(m: re.Match) -> str:
         d, mo, y = int(m.group(1)), int(m.group(2)), m.group(3)
@@ -427,7 +718,7 @@ def expand(text: str, lang: str) -> str:
         a, b = int(m.group(1)), int(m.group(2))
         if b <= a:
             return m.group(0)
-        return f"{L.int(a)}{L.range_join()}{L.int(b)}"
+        return L.range(L.int(a), L.int(b))
 
     def unit(m: re.Match) -> str:
         num, key = m.group(1), m.group(2).lower()
@@ -437,8 +728,7 @@ def expand(text: str, lang: str) -> str:
         return L.unit(key, L.decimal(num), value)
 
     def year(m: re.Match) -> str:
-        n = int(m.group(1))
-        return _hi_number(n) if L.hi else _en_year(n)
+        return L.year(int(m.group(1)))
 
     def plain(m: re.Match) -> str:
         s = m.group(1)
@@ -451,7 +741,7 @@ def expand(text: str, lang: str) -> str:
 
     def title(m: re.Match) -> str:
         hi, en = _TITLES[m.group(0).lower()]
-        return hi if L.hi else en
+        return hi if L.hi else (en if lang == "en" else m.group(0))
 
     def acronym(m: re.Match) -> str:
         w = m.group(0)
@@ -480,7 +770,7 @@ def expand(text: str, lang: str) -> str:
     t = _PERCENT.sub(fenced(lambda m: L.percent(m.group(1))), t)
     t = _DATE.sub(date, t)
     t = _TIME.sub(time, t)
-    if not L.hi:
+    if lang == "en":
         t = _DAY_MONTH_EN.sub(day_month, t)
         t = _MONTH_DAY_EN.sub(month_day, t)
         t = _ORDINAL_EN.sub(ordinal, t)
@@ -501,7 +791,9 @@ def expand(text: str, lang: str) -> str:
             # Hindi verb दो ("give") in the customer's own text stays.
             t = _FENCED.sub(lambda m: _BHO_TWO.sub("दू", m.group(0)), t)
     else:
-        t = _AMP.sub(" and ", t)
+        t = _AMP.sub(f" {L.and_word} ", t)
+        # "সাড়ে দশ" + " টায়" (time_context marked it) -> "সাড়ে দশটায়"
+        t = re.sub("\x04\x02\\s*", "\x02", t)
     t = t.replace("\x01", "").replace("\x02", "")
     t = re.sub(r"(?<=[ap]\.m\.)\.", "", t)       # "at 7 p.m.." -> "at 7 p.m."
     return re.sub(r"[ \t]{2,}", " ", t)

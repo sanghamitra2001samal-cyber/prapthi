@@ -15,6 +15,7 @@ romanized (Latin) content.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 # Common romanized Hindi -> Devanagari. Lowercased keys.
 _DICT: dict[str, str] = {
@@ -338,3 +339,236 @@ def to_bengali(text: str, speak_english: bool = False) -> str:
     rewrites runs of Latin letters.
     """
     return _dev_to_bengali(to_devanagari(text, speak_english))
+
+
+# --------------------------------------------------------------------------- #
+# Telugu, Tamil, Marathi
+# --------------------------------------------------------------------------- #
+# The same fault as Bengali. Measured 6 Nov 2026 with a Telugu recogniser:
+# svara read "దయచేసి మీ email చూడండి, తర్వాత office కి call చేయండి" 19-27%
+# wrong against 2-10% with the English words in Telugu script, and MMS drops
+# any Latin word outright (its tokenizer discards it).
+#
+# Words come from the English list above, never from the romanized-Hindi one:
+# a Tamil or Telugu writer's "main road" is English, not मैं. Acronyms are
+# spelt out (OTP -> ओ टी पी) instead of read as a word.
+#
+# Telugu and Tamil keep the inherent vowel at the end of a word where Hindi
+# drops it, so "ऑफ़िस" mapped letter by letter would read "aaphisa"; a
+# converted word that ends in a bare consonant gets the virama it needs.
+
+def _acronym_devanagari(tok: str) -> str | None:
+    from speech_text import _ACRONYM_WORDS_HI, _LETTERS_HI   # no cycle: it imports nothing of ours
+    if tok.isupper() and 2 <= len(tok) <= 6:
+        return _ACRONYM_WORDS_HI.get(tok) or " ".join(_LETTERS_HI[c] for c in tok)
+    return None
+
+
+# Telugu sits 0x300 above Devanagari, letter for letter, for everything the
+# converter emits except these.
+_DEV_TO_TELUGU = {
+    "\u0911": "\u0c06",   # candra O (ऑ) -> ఆ: ఆఫీస్, as Telugu writes office
+    "\u0949": "\u0c3e",   # its vowel sign (ॉ) -> ా: కాల్
+    "\u0945": "\u0c46",   # candra E sign -> ె
+    "\u0935": "\u0c35",   # va (Bengali has none, so it is not in _DEV_LETTERS)
+    "\u093c": "",          # nukta: ఫ already serves for f, జ for z
+}
+_TE_CONSONANTS = frozenset(chr(c) for c in range(0x0C15, 0x0C3A))
+
+# Tamil has one letter for each of क/ख/ग/घ, च/छ, ट/ठ/ड/ढ, त/थ/द/ध and प/फ/ब/भ;
+# the reader voices them from context, as it does for native words.
+_DEV_TO_TAMIL = {
+    "अ": "அ", "आ": "ஆ", "इ": "இ", "ई": "ஈ", "उ": "உ", "ऊ": "ஊ", "ऋ": "ரு",
+    "ए": "ஏ", "ओ": "ஓ", "औ": "ஔ", "ऑ": "ஆ",
+    "क": "க", "ख": "க", "ग": "க", "घ": "க", "ङ": "ங",
+    "च": "ச", "छ": "ச", "ज": "ஜ", "झ": "ஜ", "ञ": "ஞ",
+    "ट": "ட", "ठ": "ட", "ड": "ட", "ढ": "ட", "ण": "ண",
+    "त": "த", "थ": "த", "द": "த", "ध": "த", "न": "ன",
+    "प": "ப", "फ": "ஃப", "ब": "ப", "भ": "ப", "म": "ம",
+    "य": "ய", "र": "ர", "ल": "ல", "ळ": "ள", "व": "வ",
+    "श": "ஷ", "ष": "ஷ", "स": "ஸ", "ह": "ஹ",
+    "ा": "ா", "ि": "ி", "ी": "ீ", "ु": "ு", "ू": "ூ", "ृ": "ு",
+    "े": "ே", "ो": "ோ", "ौ": "ௌ", "ॉ": "ா", "ॅ": "ெ",
+    "्": "்", "़": "", "ः": "",
+}
+_TA_CONSONANTS = frozenset("கஙசஜஞடணதநனபமயரலளழவஷஸஹ")
+# Anusvara takes the nasal of the consonant after it (பேங்க், டீம்), and a word
+# opens with ந, not ன.
+_TA_NASAL = {"க": "ங்", "ச": "ஞ்", "ஜ": "ஞ்", "ட": "ண்", "த": "ந்", "ப": "ம்", "ம": "ம்"}
+
+# In the Hindi spellings of English words, ै is the vowel of "bank", and ाइ /
+# ाउ are the diphthongs of "online" / "account". Telugu, Tamil and Bengali
+# each write those differently (బ్యాంక్, பேங்க், ব্যাংক), so they travel as the
+# markers english_lexicon uses and each script fills them in.
+_DIPHTHONGS = (("आई", "\ue003\ue000"), ("आइ", "\ue003\ue000"), ("आउ", "\ue005\ue000"),
+               ("ऐ", "\ue001\ue000"), ("ाइ", "\ue003"), ("ाउ", "\ue005"), ("ै", "\ue001"))
+_VOICELESS_STOPS = frozenset("कचटतप")
+_MARKERS = frozenset("\ue001\ue003\ue005\ue007")
+_DEV_VOWEL_SIGNS = frozenset("ािीुूृेैोौॉॅ")
+_DEV_VOWELS = frozenset("अआइईउऊऋएऐओऔऑ")
+
+
+def _hindi_schwa_deletion(word: str) -> str:
+    """Write in the vowels Hindi leaves unsaid (ऑनलाइन -> ऑन्लाइन, पासवर्ड ->
+    पास्वर्ड), for scripts that say every written vowel. The usual rule: going
+    right to left, a consonant's inherent vowel is silent when a vowel comes
+    before it and a consonant with a vowel after it, never in the first
+    syllable; the final one is silent too (the caller adds that virama)."""
+    # aksharas: [text, has_inherent_vowel, has_a_vowel]
+    ak: list[list] = []
+    i, n = 0, len(word)
+    while i < n:
+        ch = word[i]
+        if ch in _CONSONANTS:
+            j = i + 1
+            while j + 1 < n and word[j] == "्" and word[j + 1] in _CONSONANTS:
+                j += 2
+            if j < n and word[j] == "़":
+                j += 1
+            if j < n and word[j] in _DEV_VOWEL_SIGNS:
+                ak.append([word[i:j + 1], False, True]); j += 1
+            elif j < n and word[j] == "्":
+                ak.append([word[i:j + 1], False, False]); j += 1
+            else:
+                ak.append([word[i:j], True, True])
+            while j < n and word[j] in "ंँ":
+                ak[-1][0] += word[j]; j += 1
+            i = j
+        else:
+            ak.append([ch, False, ch in _DEV_VOWELS]); i += 1
+    if ak and ak[-1][1]:
+        ak[-1][2] = False                   # the final inherent vowel is silent
+    for k in range(len(ak) - 2, 0, -1):
+        if ak[k][1] and ak[k - 1][2] and ak[k + 1][2] and ak[k + 1][0][0] in _CONSONANTS \
+                and not ak[k][0].endswith(("ं", "ँ")):
+            ak[k][0] += "्"; ak[k][1] = ak[k][2] = False
+    return "".join(a[0] for a in ak)
+
+
+def _dev_to_tamil(word: str) -> str:
+    # English "-ng" is a nasal alone: मीटिंग -> மீட்டிங், not மீட்டிங்க்.
+    word = re.sub("ंग(्?)(?=\\s|$)", "ङ\\1", word)
+    out = []
+    n = len(word)
+    for i, ch in enumerate(word):
+        nxt_ch = word[i + 1] if i + 1 < n else ""
+        if ch in ("ं", "ँ"):
+            nxt = _DEV_TO_TAMIL.get(nxt_ch, "")
+            out.append(_TA_NASAL.get(nxt[-1:], "ம்" if not nxt else "ன்"))
+        elif ch == "ज" and nxt_ch == "़":
+            out.append("ஸ")                        # z: ப்ளீஸ், not ப்லீஜ்
+        elif (ch in _VOICELESS_STOPS and i > 0
+              and (word[i - 1] in _DEV_VOWEL_SIGNS or word[i - 1] in _DEV_VOWELS
+                   or word[i - 1] in _CONSONANTS or word[i - 1] in _MARKERS)
+              and nxt_ch and (nxt_ch in _DEV_VOWEL_SIGNS or nxt_ch in _CONSONANTS
+                              or nxt_ch in _MARKERS)):
+            # A lone Tamil stop between vowels is voiced (ட = d), so English
+            # t/k/p there is doubled the way Tamil writes it: மீட்டிங், போட்டோ.
+            t = _DEV_TO_TAMIL[ch]
+            out.append(t + "்" + t)
+        else:
+            out.append(_DEV_TO_TAMIL.get(ch, ch))
+    s = "".join(out)
+    return "ந" + s[1:] if s.startswith("ன") else s
+
+
+def _dev_to_telugu(word: str) -> str:
+    return "".join(_DEV_TO_TELUGU[ch] if ch in _DEV_TO_TELUGU
+                   else chr(ord(ch) + 0x300) if ch in _DEV_LETTERS else ch for ch in word)
+
+
+def dev_to_script(dev: str, script: str) -> str:
+    """Devanagari (with english_lexicon's vowel markers) in another script.
+    Markers are left in place for the caller to fill."""
+    dev = unicodedata.normalize("NFD", dev)        # फ़ U+095E -> फ + nukta
+    if script != "deva":
+        for a, b in _DIPHTHONGS:
+            dev = dev.replace(a, b)
+    if script == "beng":
+        dev = re.sub("ंग(?=\\s|$)", "ं", dev)        # মিটিং, not মিটিংগ
+        dev = re.sub("(?:^|(?<=\\s))यू", "इउ", dev)     # "you" ইউ: initial য reads j
+        dev = re.sub("(?:^|(?<=\\s))य", "इय", dev)
+        dev = dev.replace("्\ue009", "\ue009")
+        # Bengali writes a nasal before t/d/p as the letter itself (মন্ডে,
+        # অকাউন্ট); ং there would read "ng".
+        dev = re.sub("[ंँ](?=[टठडढतथदधनचछजझ])", "न्", dev)
+        dev = re.sub("[ंँ](?=[पफबभम])", "म्", dev)
+        out = _dev_to_bengali(dev)
+        # য after a vowel or at a syllable start is য় in Bengali spelling of
+        # English (ভিডিয়ো); after a virama it is the য-phala and stays.
+        return re.sub("(?<!\u09cd)য(?!\u09bc)", "য\u09bc", out)
+    if script == "telu":
+        return _dev_to_telugu(dev)
+    if script == "taml":
+        return _dev_to_tamil(dev)
+    return dev
+
+
+def _close_word(word: str, consonants: frozenset, virama: str) -> str:
+    return word + virama if word and word[-1] in consonants else word
+
+
+# lang -> (script, whether a final consonant needs a virama, consonants, virama)
+_SCRIPTS = {
+    "te": ("telu", _TE_CONSONANTS, "\u0c4d"),
+    "ta": ("taml", _TA_CONSONANTS, "\u0bcd"),
+    "mr": ("deva", frozenset(), ""),
+    "bn": ("beng", frozenset(), ""),
+}
+# Every voice of these languages, IndicF5 included: measured 6 Nov 2026, it
+# read English words better in its own script than in Devanagari (Bengali
+# "Thank you ... Monday ... meeting" 25% -> 6% wrong, Marathi 24% -> 9%).
+_SCRIPT_VOICE = {
+    "te": re.compile(r"^(mms-tel|svara-te|parler-te|te_IN-|if5-te)"),
+    "ta": re.compile(r"^(mms-tam|svara-ta|parler-ta|if5-ta)"),
+    "mr": re.compile(r"^(svara-mr|parler-mr|mms-mar|if5-mr)"),
+    "bn": _BENGALI_VOICE,
+}
+
+
+def _english_word(tok: str, lang: str) -> str:
+    """One Latin word in the script of `lang`."""
+    import english_lexicon
+    script, consonants, virama = _SCRIPTS[lang]
+
+    def finish(dev: str) -> str:
+        out = english_lexicon.fill_marks(dev_to_script(dev, script), script)
+        return " ".join(_close_word(w, consonants, virama) for w in out.split(" "))
+
+    acr = _acronym_devanagari(tok)
+    if acr:
+        return finish(acr)
+    low = tok.lower()
+    # Telugu and Tamil say every written vowel, and the hand-made spellings
+    # assume Hindi's silent ones (ऑनलाइन would read "aa-na-laa-in"), so the
+    # pronunciation dictionary comes first there; Marathi and Bengali read
+    # like Hindi, so the hand-made list wins and the dictionary fills gaps.
+    # The hand-made list holds the Indian way of saying a word (मोबाइल, not
+    # the dictionary's American "mobul"), so it comes first. Telugu and Tamil
+    # say every written vowel, so its words get Hindi's silent ones marked.
+    if low in _ENGLISH_LOANS:
+        loan = unicodedata.normalize("NFD", _ENGLISH_LOANS[low])
+        if script in ("telu", "taml"):
+            loan = _hindi_schwa_deletion(loan)
+        return finish(loan)
+    return english_lexicon.pronounce(low, script) or finish(_translit_latin(tok))
+
+
+def script_language(voice_id: str) -> str:
+    """'te', 'ta' or 'mr' for a voice whose English words need its own script."""
+    v = (voice_id or "").replace("server:", "")
+    return next((lang for lang, rx in _SCRIPT_VOICE.items() if rx.match(v)), "")
+
+
+def to_script(text: str, lang: str) -> str:
+    """Latin words in `text` rewritten in the script of `lang` (te / ta / mr /
+    bn). Text already in that script is left exactly as it is."""
+    if lang not in _SCRIPTS or not _HAS_LATIN.search(text):
+        return text
+    # Only the Latin runs: _TOKEN's other runs are the customer's own text, and
+    # str.isalpha() is true for Tamil or Bengali letters too. Until 6 Nov 2026
+    # the text before the first English word went through the converter
+    # (இந்த -> இந்த், যদি -> য়দি).
+    out = "".join(_english_word(t, lang) if t[0].isascii() and t[0].isalpha() else t
+                  for t in _TOKEN.findall(text))
+    return unicodedata.normalize("NFC", out)
