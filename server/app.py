@@ -570,6 +570,26 @@ IF5_VOICES = {
     # we run and covers Bengali, so it was missing for want of two files.
     "if5-bn-f": ("Rupa · Bengali (IndicF5 HD)", "bn-IN", "female", "bn_female"),
     "if5-bn-m": ("Partho · Bengali (IndicF5 HD)", "bn-IN", "male", "bn_male"),
+    # Tamil had only svara (9-14 s a sentence on the L4) and Parler. Same recipe
+    # as above: svara's ta_female / ta_male reading a known sentence, best of
+    # 3 takes by Whisper (0% and 3% CER; a first sentence made the female
+    # voice repeat a word in every take, so she reads a different one).
+    # Measured 9 Nov 2026 on three test sentences: 2.0-2.7 s against svara's
+    # 8.6-14.3 s, with equal or lower Whisper CER.
+    "if5-ta-f": ("Tamil (IndicF5 HD)", "ta-IN", "female", "ta_female"),
+    "if5-ta-m": ("Tamil (IndicF5 HD)", "ta-IN", "male", "ta_male"),
+    # The same for Kannada, Malayalam, Punjabi and Odia (9 Nov 2026), which
+    # also had only svara and Parler. svara has no Odia male speaker, so the
+    # Odia male reads from the Bengali male clip: IndicF5 takes the language
+    # from the text and only the timbre from the reference.
+    "if5-kn-f": ("Kannada (IndicF5 HD)", "kn-IN", "female", "kn_female"),
+    "if5-kn-m": ("Kannada (IndicF5 HD)", "kn-IN", "male", "kn_male"),
+    "if5-ml-f": ("Malayalam (IndicF5 HD)", "ml-IN", "female", "ml_female"),
+    "if5-ml-m": ("Malayalam (IndicF5 HD)", "ml-IN", "male", "ml_male"),
+    "if5-pa-f": ("Punjabi (IndicF5 HD)", "pa-IN", "female", "pa_female"),
+    "if5-pa-m": ("Punjabi (IndicF5 HD)", "pa-IN", "male", "pa_male"),
+    "if5-or-f": ("Odia (IndicF5 HD)", "or-IN", "female", "or_female"),
+    "if5-or-m": ("Odia (IndicF5 HD)", "or-IN", "male", "bn_male"),
     # More voices for the two languages that get the most use. Each is a
     # distinct speaker: IndicF5 is zero-shot, so a new reference clip is a
     # new voice. The clips come from the Parler speakers, whose identities
@@ -1653,8 +1673,8 @@ _AGENT_SCRIPTS = [("hi", "ऀ", "ॿ"), ("bn", "ঀ", "৿"), ("pa", "਀", "੿
                   ("ur", "؀", "ۿ")]
 # The voice that speaks the reply in each language.
 _AGENT_VOICE = {"en": "af_heart", "hi": "if5-aanya", "mr": "if5-mr-f", "te": "if5-te-f",
-                "bn": "if5-bn-f", "gu": "if5-gu-f", "ta": "svara-ta-f", "kn": "svara-kn-f",
-                "ml": "svara-ml-f", "pa": "svara-pa-f", "or": "svara-or-f",
+                "bn": "if5-bn-f", "gu": "if5-gu-f", "ta": "if5-ta-f", "kn": "if5-kn-f",
+                "ml": "if5-ml-f", "pa": "if5-pa-f", "or": "if5-or-f",
                 "ur": "ur_PK-aegis_female-medium", "ne": "svara-ne-f"}
 
 

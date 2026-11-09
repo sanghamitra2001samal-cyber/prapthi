@@ -237,7 +237,9 @@ _ADDED_8NOV = frozenset({
     "mms-mup", "mms-hoc", "mms-unr", "ur_PK-aegis_female-medium", "ur_PK-fasih-medium",
     "no_NO-talesyntese-medium", "bg_BG-dimitar-medium", "sq_AL-edon-medium",
     "eu_ES-antton-medium", "eu_ES-maider-medium", "et_EE-news-medium", "cy_GB-bu_tts-medium",
-    "ef_dora", "em_alex", "if_sara", "im_nicola", "pf_dora", "pm_alex", "ff_siwis"})
+    "ef_dora", "em_alex", "if_sara", "im_nicola", "pf_dora", "pm_alex", "ff_siwis",
+    "if5-ta-f", "if5-ta-m", "if5-kn-f", "if5-kn-m", "if5-ml-f", "if5-ml-m",
+    "if5-pa-f", "if5-pa-m", "if5-or-f", "if5-or-m"})  # 9 Nov 2026
 
 
 def _named_late(voice_id: str) -> int:
