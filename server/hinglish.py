@@ -641,10 +641,10 @@ _SCRIPT_VOICE = {
     "mr": re.compile(r"^(svara-mr|parler-mr|mms-mar|if5-mr)"),
     "bn": _BENGALI_VOICE,
     "gu": re.compile(r"^(mms-guj|svara-gu|parler-gu|if5-gu)"),
-    "kn": re.compile(r"^(mms-kan|svara-kn|parler-kn)"),
-    "ml": re.compile(r"^(mms-mal|svara-ml|parler-ml|ml_IN-)"),
-    "pa": re.compile(r"^(mms-pan|svara-pa|parler-pa)"),
-    "or": re.compile(r"^(mms-ory|svara-or|parler-or)"),
+    "kn": re.compile(r"^(mms-kan|svara-kn|parler-kn|if5-kn)"),
+    "ml": re.compile(r"^(mms-mal|svara-ml|parler-ml|ml_IN-|if5-ml)"),
+    "pa": re.compile(r"^(mms-pan|svara-pa|parler-pa|if5-pa)"),
+    "or": re.compile(r"^(mms-ory|svara-or|parler-or|if5-or)"),
 }
 
 
