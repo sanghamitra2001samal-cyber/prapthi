@@ -519,6 +519,79 @@ def build_lyrics(script: str, title: str | None = None) -> str:
     return "\n".join(parts)
 
 
+# --------------------------------------------------------------------------- #
+# Lyrics written by the local LLM (9 Nov 2026). build_lyrics above only cut the
+# customer's text into lines and repeated the shortest as the chorus ("A short
+# happy song about ... chai, oh oh"). The 7B model writes real English lyrics
+# when shown one worked example, but its Hindi lyrics had grammar slips, so
+# Indian-language songs are written in English and translated line by line.
+# --------------------------------------------------------------------------- #
+_LYRICS_EXAMPLE = (
+    "Mood: calm. Genre: acoustic.\nA gentle song about rain on the first day of monsoon.",
+    "[Verse 1]\nGrey clouds gather over the town\nThe first drops patter softly down\n"
+    "Children run with paper boats\nThe smell of earth through the window floats\n\n"
+    "[Chorus]\nRain, rain, the monsoon is here\nWashing the dust of a long dry year\n"
+    "Dance in the puddles, sing it loud\nThe sky is singing through every cloud\n\n"
+    "[Verse 2]\nMother calls us in for tea\nPakoras hot as hot can be\n"
+    "The rooftops drum a steady beat\nThe whole street sways to its rhythm sweet\n\n"
+    "[Chorus]\nRain, rain, the monsoon is here\nWashing the dust of a long dry year\n"
+    "Dance in the puddles, sing it loud\nThe sky is singing through every cloud\n\n"
+    "[Bridge]\nHold my hand and close your eyes\nListen to the singing skies\n\n"
+    "[Outro]\nRain, rain, stay a little while")
+_LYRICS_SYSTEM = (
+    "You are a songwriter. Write original English song lyrics about what the user "
+    "describes. Use exactly this layout: a section name alone on its own line in square "
+    "brackets, then its lines. Sections: [Verse 1] 4 lines, [Chorus] 4 lines, [Verse 2] "
+    "4 lines, [Chorus] the same 4 lines again, [Bridge] 2 lines, [Outro] 1 line. Short "
+    "singable lines (5-9 words) with simple end rhymes. Use images and feelings; never "
+    "copy the user's sentences. Output only the lyrics.")
+# Song languages the studio offers, as translator codes ("hinglish" sings Hindi).
+_LYRICS_TARGET = {"hi": "hi", "hinglish": "hi", "sa": "sa", "te": "te", "ta": "ta", "pa": "pa"}
+_SECTION = re.compile(r"^\s*\[[^\]]{2,20}\]\s*$")
+
+
+def _usable_lyrics(text: str, script: str) -> bool:
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    tags = [ln for ln in lines if _SECTION.match(ln)]
+    words = [ln for ln in lines if not _SECTION.match(ln)]
+    if len(tags) < 3 or len(words) < 8:
+        return False
+    echoed = sum(1 for ln in words if len(ln) > 12 and ln.lower() in script.lower())
+    return echoed <= len(words) // 4
+
+
+def write_lyrics(script: str, title: str | None, language: str, genre: str, mood: str,
+                 chat, translate) -> tuple[str, str]:
+    """(lyrics, how they were made). `chat` is the app's LLM call and
+    `translate` dubbing.translate; either failing falls back to build_lyrics."""
+    hint = f"Mood: {mood or 'from the description'}. Genre: {genre or 'pop'}."
+    try:
+        text = chat([{"role": "system", "content": _LYRICS_SYSTEM},
+                     {"role": "user", "content": _LYRICS_EXAMPLE[0]},
+                     {"role": "assistant", "content": _LYRICS_EXAMPLE[1]},
+                     {"role": "user", "content": f"{hint}\n{script[:2000]}"}], max_tokens=450)
+    except Exception as e:  # noqa: BLE001
+        print(f"[song] lyrics LLM failed: {e!r}")
+        return build_lyrics(script, title), "template"
+    text = "\n".join(ln.rstrip() for ln in str(text).strip().splitlines())
+    if not _usable_lyrics(text, script):
+        print("[song] LLM lyrics unusable; using the template")
+        return build_lyrics(script, title), "template"
+    tgt = _LYRICS_TARGET.get((language or "en").lower())
+    if tgt:
+        lines = text.splitlines()
+        idx = [i for i, ln in enumerate(lines) if ln.strip() and not _SECTION.match(ln)]
+        try:
+            out = translate([lines[i] for i in idx], "en", tgt)
+            for i, t in zip(idx, out):
+                lines[i] = t
+            text = "\n".join(lines)
+        except Exception as e:  # noqa: BLE001 — English lyrics beat none
+            print(f"[song] lyrics translation to {tgt} failed: {e!r}; keeping English")
+            return (f"({title})\n" if title else "") + text, "llm-en"
+    return (f"({title})\n" if title else "") + text, "llm" + (f"+{tgt}" if tgt else "")
+
+
 def lyrics_to_speakable(lyrics: str) -> str:
     """Strip section tags so the TTS reads only the words."""
     out = [ln for ln in lyrics.splitlines() if not re.match(r"^\s*[\[(]", ln)]

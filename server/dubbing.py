@@ -29,8 +29,6 @@ M2M_LANG = {
 _whisper = None
 _mt = None
 _mt_tok = None
-_it2 = _it2_tok = _it2_ip = None
-_it2_ok = None  # None=untried, True/False=availability
 
 # IndicTrans2 (best Indic quality; auto-used for en->Indic when the model is
 # accessible — i.e. once an HF token is cached on the server). Covers Telugu &
@@ -242,47 +240,78 @@ def transcribe(wav_path: str, language: str | None = None, vad: bool = True,
     return segs, info.language
 
 
-def _get_it2():
-    """Lazy-load IndicTrans2 (en->Indic). Returns (model, tokenizer,
-    processor), or None if not accessible (e.g. no HF token) — caller falls
-    back to M2M-100. The caller works from this tuple, never the globals,
-    so freeing it when idle cannot break a translation in progress."""
-    global _it2, _it2_tok, _it2_ip, _it2_ok
-    if _it2_ok is False:
+# IndicTrans2 comes as three models, one per direction. Until 9 Nov 2026 the
+# models (gated) and IndicTransToolkit were missing on the server, so every
+# dub used M2M-100: it turned "बाजार" into Tamil for "sale", wrote "Chennai"
+# for "Pune", and has no Telugu at all. Measured that day, IndicTrans2 got all
+# of those right and ran 2-3x faster.
+_IT2_MODELS = {"en-indic": "ai4bharat/indictrans2-en-indic-dist-200M",
+               "indic-en": "ai4bharat/indictrans2-indic-en-dist-200M",
+               "indic-indic": "ai4bharat/indictrans2-indic-indic-dist-320M"}
+_IT2_LOADED: dict[str, tuple] = {}
+_IT2_FAILED: set[str] = set()
+IT2_LANG.update({"sa": "san_Deva", "mai": "mai_Deva", "kok": "gom_Deva", "doi": "doi_Deva",
+                 "brx": "brx_Deva", "mni": "mni_Beng", "sd": "snd_Arab", "ks": "kas_Arab",
+                 "sat": "sat_Olck"})
+
+
+def _get_it2(direction: str = "en-indic"):
+    """(model, tokenizer, processor) for one IndicTrans2 direction, or None if
+    it cannot load (no access): the caller falls back to M2M-100. Callers work
+    from the returned tuple, so freeing it when idle cannot break a running
+    translation."""
+    if direction in _IT2_FAILED:
         return None
-    idle_models.touch("indictrans2", _drop("_it2", "_it2_tok", "_it2_ip"))
-    if _it2 is None:
+    idle_models.touch(f"indictrans2:{direction}",
+                      lambda: _IT2_LOADED.pop(direction, None) and None)
+    got = _IT2_LOADED.get(direction)
+    if got is None:
         try:
             from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
             from IndicTransToolkit.processor import IndicProcessor
-            M = "ai4bharat/indictrans2-en-indic-dist-200M"
-            _it2_tok = AutoTokenizer.from_pretrained(M, trust_remote_code=True)
-            _it2 = AutoModelForSeq2SeqLM.from_pretrained(M, trust_remote_code=True)
-            _it2_ip = IndicProcessor(inference=True)
-            _it2_ok = True
-            print("[dub] IndicTrans2 loaded (best Indic quality)")
+            m = _IT2_MODELS[direction]
+            got = (AutoModelForSeq2SeqLM.from_pretrained(m, trust_remote_code=True).eval(),
+                   AutoTokenizer.from_pretrained(m, trust_remote_code=True),
+                   IndicProcessor(inference=True))
+            _IT2_LOADED[direction] = got
+            print(f"[dub] IndicTrans2 {direction} loaded")
         except Exception as e:
-            print(f"[dub] IndicTrans2 unavailable ({repr(e)[:60]}); using M2M-100")
-            _it2_ok = False
+            print(f"[dub] IndicTrans2 {direction} unavailable ({repr(e)[:80]}); using M2M-100")
+            _IT2_FAILED.add(direction)
             return None
-    return _it2, _it2_tok, _it2_ip
+    return got
+
+
+def _it2_translate(it2, texts: list[str], src: str, tgt: str) -> list[str]:
+    import torch
+    model, tok, ip = it2
+    out: list[str] = []
+    for i in range(0, len(texts), 8):                 # small batches: CPU, beam 5
+        b = ip.preprocess_batch(texts[i:i + 8], src_lang=src, tgt_lang=tgt)
+        enc = tok(b, truncation=True, padding="longest", return_tensors="pt", max_length=256)
+        with torch.no_grad():
+            g = model.generate(**enc, max_length=256, num_beams=5)
+        out += ip.postprocess_batch(tok.batch_decode(g, skip_special_tokens=True), lang=tgt)
+    return out
 
 
 def translate(texts: list[str], src: str, tgt: str) -> list[str]:
-    # Prefer IndicTrans2 for English -> Indic (best quality + Telugu/Assamese).
-    it2 = _get_it2() if (src or "en").startswith("en") and tgt in IT2_LANG else None
-    if it2 is not None:
-        import torch
-        model, tok, ip = it2
-        b = ip.preprocess_batch(texts, src_lang="eng_Latn", tgt_lang=IT2_LANG[tgt])
-        enc = tok(b, truncation=True, padding="longest", return_tensors="pt")
-        with torch.no_grad():
-            g = model.generate(**enc, max_length=256, num_beams=5)
-        dec = tok.batch_decode(g, skip_special_tokens=True)
-        return ip.postprocess_batch(dec, lang=IT2_LANG[tgt])
+    """Translate between English and the Indian languages with IndicTrans2,
+    and anything else with M2M-100."""
+    src = (src or "en").split("-")[0].lower()
+    tgt = (tgt or "en").split("-")[0].lower()
+    if src == tgt or not texts:
+        return list(texts)
+    direction = ("en-indic" if src == "en" and tgt in IT2_LANG else
+                 "indic-en" if src in IT2_LANG and tgt == "en" else
+                 "indic-indic" if src in IT2_LANG and tgt in IT2_LANG else None)
+    if direction:
+        it2 = _get_it2(direction)
+        if it2 is not None:
+            code = lambda l: "eng_Latn" if l == "en" else IT2_LANG[l]  # noqa: E731
+            return _it2_translate(it2, texts, code(src), code(tgt))
     if tgt not in M2M_LANG:
-        raise ValueError(
-            f"target '{tgt}' needs IndicTrans2 (add an HF token to enable it)")
+        raise ValueError(f"cannot translate into '{tgt}' (IndicTrans2 unavailable)")
     import torch
     model, tok = _get_mt()
     tok.src_lang = M2M_LANG.get(src, "en")

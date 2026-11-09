@@ -19,3 +19,7 @@ onnxruntime==1.23.2 ; python_version < "3.14"
 # Tamil/Telugu/Bengali/Marathi number words (AI4Bharat, MIT). speech_text.py
 # falls back to passing those languages through unchanged if it is missing.
 indic-numtowords==1.1.0
+# IndicTrans2's text processing (translation for dubbing, ads, lyrics). Install
+# with numpy pinned (pip install -c <(echo numpy==1.26.4) ...): unpinned it pulls
+# numpy 2.x, which torch 2.2 cannot load.
+IndicTransToolkit==1.1.1

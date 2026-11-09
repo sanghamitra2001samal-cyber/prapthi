@@ -917,8 +917,12 @@ async def song_analyze(request: Request) -> JSONResponse:
     script = script[:60000]
     title = (str(body.get("title", "")).strip() or "Untitled")[:80]
     emo = await run_in_threadpool(songmod.analyze_emotion, script)
-    lyrics = await run_in_threadpool(songmod.build_lyrics, script, title)
-    return JSONResponse({"emotion": emo, "lyrics": lyrics, "title": title})
+    lyrics, how = await run_in_threadpool(
+        songmod.write_lyrics, script, title, str(body.get("language") or "en"),
+        str(body.get("genre") or ""), str(body.get("mood") or emo.get("dominant") or ""),
+        lambda msgs, max_tokens=450: _llm_chat(msgs, max_tokens=max_tokens),
+        dubbing.translate)
+    return JSONResponse({"emotion": emo, "lyrics": lyrics, "title": title, "lyrics_source": how})
 
 
 async def song_create(request: Request) -> JSONResponse:
@@ -2071,16 +2075,52 @@ def _ads_synth(text: str, voice: str) -> bytes:
     return a
 
 
+_AD_EXAMPLE = (
+    "Brief: A new bakery opening in Indore with free samples on Sunday\nTone: warm",
+    "A new bakery has opened in Indore. Fresh cakes, warm bread and sweet treats are "
+    "waiting for you. Come this Sunday and taste our free samples. We look forward to "
+    "seeing you!")
+
+
+def _ad_script(brief: str, lang: str, tone: str, seconds: int) -> tuple[str, str]:
+    """(script in `lang`, English original). The local 7B model writes English
+    well and Indian languages badly: asked for Hindi it got grammatical gender
+    wrong, wrote "प्रिसेंट" for percent and once offered "tea and coughs"
+    (measured 9 Nov 2026). So it writes plain English, and IndicTrans2
+    translates it, sentence by sentence. Plain means no idioms: those come out
+    word for word ("taste the difference" -> "अंतर का स्वाद लें")."""
+    words = max(20, int(seconds * 2.4))
+    sysp = ("You write short radio ads in plain, simple English. Keep every fact from the "
+            "brief exactly (place, numbers, dates, offers) and add nothing that is not in "
+            "it: no prices, addresses, phone numbers or websites. No idioms, slang or "
+            "wordplay: the ad may be translated. "
+            f"About {words} words in 3 to 5 short sentences, ending with an invitation. "
+            "Output only the words to be spoken: no labels, quotes or emojis.")
+    english = _llm_chat([{"role": "system", "content": sysp},
+                         {"role": "user", "content": _AD_EXAMPLE[0]},
+                         {"role": "assistant", "content": _AD_EXAMPLE[1]},
+                         {"role": "user", "content": f"Brief: {brief}\nTone: {tone}"}],
+                        max_tokens=320).strip().strip('"')
+    if lang == "en":
+        return english, english
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", english) if s.strip()]
+    try:
+        return " ".join(dubbing.translate(sentences, "en", lang)), english
+    except Exception as e:  # translator away: write directly in the language
+        print(f"[ads] translation failed ({e!r}); writing in {lang} directly")
+        ln = _ADS_LANG.get(lang, "English")
+        direct = _llm_chat([{"role": "system", "content":
+                             f"Write a {seconds}-second voice ad in {ln} with correct grammar. "
+                             "Output only the spoken words."},
+                            {"role": "user", "content": f"Brief: {brief}\nTone: {tone}"}],
+                           max_tokens=320).strip()
+        return direct, english
+
+
 def _run_ads(aid: str, brief: str, lang: str, voice: str, tone: str, seconds: int) -> None:
     try:
         _ads_jobs[aid].update(status="processing", step="Writing script", progress=20)
-        ln = _ADS_LANG.get(lang, "English")
-        sysp = (f"You are an award-winning advertising copywriter. Write a punchy, "
-                f"persuasive {seconds}-second voice ad in {ln}. Output ONLY the spoken "
-                f"ad copy — no labels, no stage directions, no quotes, no emojis.")
-        userp = f"Product/brief: {brief}\nTone: {tone}"
-        script = _llm_chat([{"role": "system", "content": sysp},
-                            {"role": "user", "content": userp}], max_tokens=320).strip()
+        script, english = _ad_script(brief, lang, tone, seconds)
         _ads_jobs[aid].update(step="Voicing", progress=70)
         t = normalize_speech_text(script, _speech_lang(voice) or lang)
         if hinglish.script_language(voice):
@@ -2091,7 +2131,8 @@ def _run_ads(aid: str, brief: str, lang: str, voice: str, tone: str, seconds: in
         ADS_DIR.mkdir(exist_ok=True)
         with open(ADS_DIR / f"{aid}.mp3", "wb") as f:
             f.write(audio)
-        _ads_jobs[aid].update(status="done", step="Completed", progress=100, script=script)
+        _ads_jobs[aid].update(status="done", step="Completed", progress=100, script=script,
+                              script_en=english)
     except Exception as e:
         print(f"[ads] {aid} failed: {e!r}")
         _ads_jobs[aid].update(status="failed", step="Failed", error=repr(e)[:200])
