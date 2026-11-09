@@ -21,7 +21,7 @@ import subprocess
 import uuid
 from pathlib import Path
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -1615,12 +1615,57 @@ async def dub_file(request: Request) -> Response:
 
 
 # --- Conversational Voice Agent (Whisper -> LLM -> TTS) -------------------- #
+# The agent thinks in English and its reply is translated (9 Nov 2026): the
+# local 7B model reads Indian languages well enough but writes them badly
+# (wrong gender, invented words), while IndicTrans2 translates English
+# replies cleanly. So the model always answers in English, in plain words
+# with no idioms, and the user hears and reads it in their own language.
 AGENT_SYS = (
-    "You are Prapthi, a warm, friendly Indian voice assistant. Reply naturally "
-    "and concisely in the SAME language the user used (Hindi in Devanagari, or "
-    "English). Keep replies short and conversational — they will be spoken aloud. "
-    "Be helpful for everyday and small-business tasks."
+    "You are Prapthi, a warm, friendly Indian voice assistant. Always reply in "
+    "plain, simple English (your reply is translated for the user, so avoid idioms "
+    "and wordplay). Keep replies short and conversational, 1-2 sentences: they "
+    "will be spoken aloud. Never use placeholders such as [name], lists, quotation "
+    "marks, emojis or formatting. Be helpful for everyday and small-business tasks."
 )
+# English shadows of what was said in another language, so the model reads past
+# turns in English too (it understands Indian scripts poorly: a Tamil "tomorrow"
+# came back as "today"). Small and bounded; a miss just uses the original text.
+_AGENT_EN: "OrderedDict[str, str]" = OrderedDict()
+
+
+def _agent_remember(said: str, english: str) -> None:
+    _AGENT_EN[said] = english
+    _AGENT_EN.move_to_end(said)
+    while len(_AGENT_EN) > 2000:
+        _AGENT_EN.popitem(last=False)
+
+
+def _agent_clean(text: str) -> str:
+    """Strip what must not be read aloud: markdown, quotes, bracketed placeholders."""
+    text = re.sub(r"\[[^\]]{0,40}\]", "", text)
+    text = re.sub(r"[*_#`\"\u201c\u201d]", "", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
+# Which language a message is in, from its script. Devanagari is read as
+# Hindi (Marathi and Nepali share it; Whisper's guess breaks the tie for speech).
+_AGENT_SCRIPTS = [("hi", "ऀ", "ॿ"), ("bn", "ঀ", "৿"), ("pa", "਀", "੿"),
+                  ("gu", "઀", "૿"), ("or", "଀", "୿"), ("ta", "஀", "௿"),
+                  ("te", "ఀ", "౿"), ("kn", "ಀ", "೿"), ("ml", "ഀ", "ൿ"),
+                  ("ur", "؀", "ۿ")]
+# The voice that speaks the reply in each language.
+_AGENT_VOICE = {"en": "af_heart", "hi": "if5-aanya", "mr": "if5-mr-f", "te": "if5-te-f",
+                "bn": "if5-bn-f", "gu": "if5-gu-f", "ta": "svara-ta-f", "kn": "svara-kn-f",
+                "ml": "svara-ml-f", "pa": "svara-pa-f", "or": "svara-or-f",
+                "ur": "ur_PK-aegis_female-medium", "ne": "svara-ne-f"}
+
+
+def _agent_language(text: str, hint: str | None = None) -> str:
+    counts = {code: sum(lo <= ch <= hi for ch in text) for code, lo, hi in _AGENT_SCRIPTS}
+    code, n = max(counts.items(), key=lambda kv: kv[1])
+    if not n:
+        return "en"
+    if code == "hi" and hint in ("mr", "ne"):
+        return hint
+    return code
 
 
 def _llm_chat(messages: list, max_tokens: int = 220) -> str:
@@ -1633,33 +1678,57 @@ def _llm_chat(messages: list, max_tokens: int = 220) -> str:
         return json.loads(r.read())["reply"]
 
 
-def _agent_tts(text: str) -> bytes:
-    """Speak the agent's reply: IndicF5 (Hindi) for Devanagari, else English TTS."""
-    if re.search(r"[ऀ-ॿ]", text):
-        ref = _if5_ref("if5-aanya")
+def _agent_tts(text: str, lang: str = "en") -> bytes:
+    """Speak the agent's reply in `lang` with that language's voice, through
+    the same text preparation as the studio (numbers read out, English words
+    in the voice's script)."""
+    voice = _AGENT_VOICE.get(lang, "af_heart")
+    t = normalize_speech_text(text, _speech_lang(voice) or lang)
+    if hinglish.script_language(voice):
+        t = _native_script(t, voice)
+    elif hinglish.is_hindi_voice(voice) or voice.startswith("if5"):
+        t = hinglish.to_devanagari(t, speak_english=_needs_english_in_devanagari(voice))
+    if voice.startswith("if5-"):
+        ref = _if5_ref(voice)
         if ref:
-            audio, _m = if5_synth(text, ref[0], ref[1], fmt="mp3")
+            audio, _m = if5_synth(t, ref[0], ref[1], fmt="mp3")
             return audio
     audio, _m = ENGINE.synthesize(
-        text=text, voice_id="af_heart", rate=1.0, pitch=1.0, volume=1.0, fmt="mp3")
+        text=t, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="mp3")
     return audio
 
 
-def _agent_turn(history: list, user_text: str) -> tuple[str, str]:
+def _agent_turn(history: list, user_text: str, lang_hint: str | None = None) -> tuple[str, str]:
     """Run one turn: returns (reply_text, audio_data_uri)."""
     import base64
+    lang = _agent_language(user_text, lang_hint)
+    asked = user_text
+    if lang != "en":
+        try:
+            asked = dubbing.translate([user_text], lang, "en")[0] or user_text
+            _agent_remember(user_text, asked)
+        except Exception as e:
+            print(f"[agent] translation from {lang} failed: {e!r}")
     msgs = [{"role": "system", "content": AGENT_SYS}]
     for m in history[-12:]:
         if m.get("role") in ("user", "assistant") and m.get("content"):
-            msgs.append({"role": m["role"], "content": str(m["content"])[:2000]})
-    # The "Indian assistant" persona pulls replies into Hindi even when the
-    # user wrote English. The rule has to ride on the user turn: a trailing
-    # system message was measured to be ignored by the model.
-    hindi = any("\u0900" <= ch <= "\u097f" for ch in user_text)
-    rule = "(Reply in Hindi, Devanagari.)" if hindi else "(Reply in English only.)"
-    msgs.append({"role": "user", "content": user_text + "\n\n" + rule})
-    reply = _llm_chat(msgs)
-    audio = _agent_tts(reply)
+            said = str(m["content"])[:2000].strip()
+            msgs.append({"role": m["role"], "content": _AGENT_EN.get(said, said)})
+    # The rule has to ride on the user turn: a trailing system message was
+    # measured to be ignored by the model, and earlier replies in the user's
+    # language pull it away from English.
+    msgs.append({"role": "user", "content": asked + "\n\n(Reply in English only.)"})
+    english = _agent_clean(_llm_chat(msgs))
+    reply = english
+    if lang != "en":
+        sentences = [s for s in re.split(r"(?<=[.!?])\s+", english) if s.strip()]
+        try:
+            reply = _agent_clean(" ".join(dubbing.translate(sentences, "en", lang)))
+            _agent_remember(reply, english)
+        except Exception as e:  # translator away: answer in English rather than not at all
+            print(f"[agent] translation to {lang} failed: {e!r}")
+            lang = "en"
+    audio = _agent_tts(reply, lang)
     uri = "data:audio/mpeg;base64," + base64.b64encode(audio).decode()
     return reply, uri
 
@@ -1705,7 +1774,7 @@ async def agent_voice(request: Request) -> JSONResponse:
         user_text = " ".join(s["text"] for s in segs).strip()
         if not user_text:
             return None
-        reply, uri = _agent_turn(history, user_text)
+        reply, uri = _agent_turn(history, user_text, _lang)
         return user_text, reply, uri
 
     try:
