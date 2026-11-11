@@ -31,8 +31,29 @@ Only `expand(text, lang)` is public. Other languages pass through unchanged.
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
+
+
+# Phase-2 languages (released 9-10 Nov 2026) can each be switched back to the
+# earlier behaviour, digits and English left as typed, without a code change:
+# PRAPTHI_TEXT_OFF=gu,as. Only these six are accepted, so a typo can never
+# switch off a language that was already live.
+PHASE2 = frozenset({"gu", "kn", "ml", "pa", "or", "as",
+                    # regional languages (9-10 Nov 2026), read with a neighbour's rules
+                    "bgc", "mag", "gbm", "kru", "sck", "xnr", "bfy", "mup", "hoc", "unr",
+                    "hne", "mai", "doi", "brx",
+                    # Urdu numbers and Assamese English words (built 9 Nov, not yet measured)
+                    "ur", "as-en"})
+# Numbers in these are said the way their speakers usually say them: Hindi
+# number words across the Hindi belt (and for Kurukh, Sadri and Bodo, whose
+# speakers count in Hindi or Assamese in daily use), Odia words for Ho and
+# Mundari, which are written in Odia script in Odisha and Jharkhand.
+_READ_AS = {"bgc": "hi", "mag": "hi", "gbm": "hi", "kru": "hi", "sck": "hi", "xnr": "hi",
+            "bfy": "hi", "mup": "hi", "hne": "hi", "mai": "hi", "doi": "hi", "brx": "hi",
+            "hoc": "or", "unr": "or"}
+TEXT_OFF = frozenset(x.strip().lower() for x in os.environ.get("PRAPTHI_TEXT_OFF", "").split(",")) & PHASE2
 
 try:  # AI4Bharat's number tables (MIT); without them ta/te/bn/mr pass through
     from indic_numtowords import num2words as _indic_num2words
@@ -491,6 +512,20 @@ _INDIC = {
                   "min": "ମିନିଟ", "mins": "ମିନିଟ", "sec": "ସେକେଣ୍ଡ", "gb": "ଜିବି",
                   "mb": "ଏମବି", "°c": "ଡିଗ୍ରୀ ସେଲସିୟସ"},
     },
+    "ur": {
+        "rupee": "روپے", "rupee1": "روپیہ", "paise": "پیسے",
+        "dollar": "ڈالر", "cent": "سینٹ", "percent": "{n} فیصد",
+        "point": "اعشاریہ", "plus": "پلس", "and": "اور",
+        "lakh": "لاکھ", "crore": "کروڑ", "range": "{a} سے {b}",
+        "months": "جنوری فروری مارچ اپریل مئی جون جولائی اگست ستمبر اکتوبر نومبر دسمبر",
+        "day": ("صبح", "دوپہر", "شام", "رات"),
+        "units": {"km": "کلومیٹر", "kg": "کلو", "g": "گرام", "gm": "گرام",
+                  "cm": "سینٹی میٹر", "mm": "ملی میٹر", "m": "میٹر",
+                  "ml": "ملی لیٹر", "l": "لیٹر", "kmph": "کلومیٹر فی گھنٹہ",
+                  "km/h": "کلومیٹر فی گھنٹہ", "hrs": "گھنٹے", "hr": "گھنٹہ",
+                  "min": "منٹ", "mins": "منٹ", "sec": "سیکنڈ", "gb": "جی بی",
+                  "mb": "ایم بی", "°c": "ڈگری سیلسیس"},
+    },
     "as": {
         "rupee": "টকা", "rupee1": "টকা", "paise": "পইচা",
         "dollar": "ডলাৰ", "cent": "চেণ্ট", "percent": "{n} শতাংশ",
@@ -578,6 +613,7 @@ def _half_past(code: str, hour: str) -> str:
 _QUARTERS = {
     "gu": ("દોઢ", "અઢી", "સાડા {h}", "સવા {h}", "પોણા {h}", "{h} ને {m}"),
     "pa": ("ਡੇਢ", "ਢਾਈ", "ਸਾਢੇ {h}", "ਸਵਾ {h}", "ਪੌਣੇ {h}", "{h} ਵੱਜ ਕੇ {m} ਮਿੰਟ"),
+    "ur": ("ڈیڑھ", "ڈھائی", "ساڑھے {h}", "سوا {h}", "پونے {h}", "{h} بج کر {m} منٹ"),
 }
 # Bengali and Odia put a classifier on the hour (দশটা, ଦଶଟା) and merge it with
 # the one the customer wrote ("10:30 টায়", "10 ଟାରେ").
@@ -586,7 +622,7 @@ _HOUR_CLASSIFIER = {"bn": "টা", "or": "ଟା"}
 _BN_DAY = {1: "পয়লা", 2: "দোসরা", 3: "তেসরা", 4: "চৌঠা"}
 # The year in hundreds, as said aloud: উনিশশো / एकोणीसशे / పందొమ్మిది వందల.
 _HUNDREDS_YEAR = {"bn": "{c}শো", "mr": "{c}शे", "te": "{c} వందల", "gu": "{c} સો",
-                  "pa": "{c} ਸੌ", "or": "{c} ଶହ", "as": "{c} শ"}
+                  "pa": "{c} ਸੌ", "or": "{c} ଶହ", "as": "{c} শ", "ur": "{c} سو"}
 # "One" before a noun is its own word in Tamil and Telugu: ஒரு ரூபாய், ఒక రూపాయి.
 _ONE_BEFORE_NOUN = {"ta": "ஒரு", "te": "ఒక", "ml": "ഒരു"}
 # A noun after a Telugu number takes the oblique: వేలు -> వేల రూపాయలు.
@@ -621,6 +657,9 @@ class _IndicLang:
             words = words.replace("தொண்ணூரெட்டு", "தொண்ணூற்றெட்டு")   # 98, misspelt upstream
         elif self.code == "as":
             words = words.replace("র", "ৰ")        # Assamese ra; the table mixes in Bengali's
+        elif self.code == "ur":
+            # the table writes the word-final nasal mid-word (پاںچ); Urdu spells پانچ
+            words = re.sub("\u06ba(?=[\u0600-\u06ff])", "\u0646", words)
         # NFC: the tables spell some vowels decomposed (Telugu ై as ె + U+0C56),
         # which looks the same but is not the text an engine was trained on.
         return unicodedata.normalize("NFC", " ".join(words.split()))
@@ -673,7 +712,7 @@ class _IndicLang:
         if self.code == "bn":
             day = _BN_DAY.get(d) or self.int(d) + ("ই" if d <= 18 else "শে")
             return f"{day} {month}" + ("," + year if year else "")
-        if self.code in ("mr", "gu", "pa", "or", "as"):
+        if self.code in ("mr", "gu", "pa", "or", "as", "ur"):
             return f"{self.int(d)} {month}{year}"
         return f"{month} {self.int(d)}" + ("," + year if year else "")    # ta, te, kn, ml
 
@@ -824,8 +863,9 @@ def _expand(text: str, lang: str) -> str:
     into words for `lang`: "hi", "bho", "en", or a language in _INDIC.
     Other languages pass through."""
     lang = (lang or "").lower().split("-")[0]
-    if not text:
+    if not text or lang in TEXT_OFF:
         return text
+    lang = _READ_AS.get(lang, lang)
     if lang in _INDIC and _indic_num2words is not None:
         L = _IndicLang(lang)
         text = text.translate(_INDIC_DIGITS)      # ১৫ / १५ / ౧౫ / ௧௫ -> 15

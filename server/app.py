@@ -85,6 +85,7 @@ import billing
 import emotion as emotion_mod
 import entitlements
 import voice_names
+import age_voice
 import expressive_dsp
 
 _EMOTIONS = emotion_mod.EMOTIONS
@@ -96,10 +97,54 @@ _EMOTIONS = emotion_mod.EMOTIONS
 _EMOTION_PROSODY = {k: f.prosody for k, f in emotion_mod.FEELS.items()}
 
 
+def _svara_emo_table() -> dict[str, float]:
+    """PRAPTHI_SVARA_EMO="happy:1.0,sad:1.0,angry:1.0": the svara feelings that get
+    expressive_dsp.shape_svara on top of svara's own tag, at that strength.
+    Empty (the default) keeps the earlier behaviour exactly. Set per feeling by
+    the 9-10 Nov 2026 night measurement."""
+    out = {}
+    for part in os.environ.get("PRAPTHI_SVARA_EMO", "").split(","):
+        name, _, k = part.partition(":")
+        name = name.strip()
+        if name in expressive_dsp.SVARA_PROFILES:
+            try:
+                out[name] = max(0.0, min(2.0, float(k or 1.0)))
+            except ValueError:
+                pass
+    return out
+
+
+_SVARA_EMO = _svara_emo_table()
+
+
 # --- Speech text normalization (QA #1 phone numbers, #7 punctuation) -------- #
 _DIGIT_RUN = re.compile(r"\d{7,}")
 _REPEAT_PUNCT = re.compile(r"([,;:.!?।])\1+")
 _NONSPEECH = re.compile(r"[*_~^`|<>{}\\=+#@]+")
+
+
+# --- Errors a customer sees ----------------------------------------------- #
+# Until 9 Nov 2026 failed jobs showed repr(e), e.g. "FileNotFoundError(2, 'No
+# such file or directory', '/home/apple/prapthi/server/dubs/..._src.wav')":
+# meaningless to a customer and it exposed server paths (and engine URLs).
+# The full error is still printed to the server log.
+_INTERNAL = re.compile(r"(/home/|/tmp/|/usr/|https?://|\b\d{1,3}(\.\d{1,3}){3}\b|Errno|Traceback|\.py\b)")
+
+
+def _public_error(e: BaseException) -> str:
+    print(f"[voxforge] job error: {e!r}", flush=True)
+    msg = str(e).strip()
+    if getattr(e, "public", False) and msg:
+        return msg[:300]
+    if isinstance(e, MemoryError):
+        return "This file is too long to process in one go. Please try a shorter one."
+    if isinstance(e, (TimeoutError,)) or "timed out" in msg.lower():
+        return "The service took too long to answer. Please try again in a minute."
+    if isinstance(e, FileNotFoundError):
+        return "We couldn't read this file. Please upload a common audio or video format (MP3, WAV, M4A, MP4, MOV)."
+    if isinstance(e, (ValueError, EngineError)) and msg and not _INTERNAL.search(msg) and len(msg) < 240:
+        return msg
+    return "Something went wrong while processing this. Please try again; if it keeps failing, try a shorter or different file."
 
 
 def _native_script(text: str, voice_id: str) -> str:
@@ -182,6 +227,11 @@ PREVIEW_TEMPLATES = {
     # Kurukh, Ho, Mundari: the name and the brand only, rather than a guessed
     # sentence in a language we cannot check.
     "kru": "{n}। प्राप्ति ए आई।",
+    "mai": "हम {n} छी। हम प्राप्ति ए आई केर आवाज छी। अहाँ केहन छी?",
+    "as": "মই {n}। মই প্ৰাপ্তি এ আইৰ কণ্ঠ। আপুনি কেনে আছে?",
+    "hne": "{n}। प्राप्ति ए आई।",
+    "doi": "{n}। प्राप्ति ए आई।",
+    "brx": "{n}। प्राप्ति ए आई।",
     "hoc": "{n}। ପ୍ରାପ୍ତି ଏ ଆଇ।",
     "unr": "{n}। ପ୍ରାପ୍ତି ଏ ଆଇ।",
     "bg": "Аз съм {n}. Аз съм гласът на Прапти Ей Ай. Как сте?",
@@ -719,6 +769,11 @@ async def voices(request: Request) -> JSONResponse:
     if os.environ.get("VAGDHENU_ENABLED", "0") == "1":
         for vid, (name, lang, gender) in VAGDHENU_VOICES.items():
             data.append({"id": vid, "name": name, "lang": lang, "gender": gender})
+    # Child and grandparent voices, each made from an adult voice listed above.
+    # Listed LAST, after the customer's own cloned voices: before 9 Nov the list
+    # was library voices then clones, and clones must not move down behind
+    # 250 new entries.
+    _ages = age_voice.catalogue({str(v["id"]): str(v["lang"]) for v in data})
     # Append this user's private cloned voices (powered by Chatterbox).
     try:
         for c in await db.list_clones(user["email"]):
@@ -736,6 +791,7 @@ async def voices(request: Request) -> JSONResponse:
                 })
     except Exception as e:  # never break the picker over clones
         print(f"[voxforge] list clones failed: {e!r}")
+    data.extend(_ages)
     data = _curate_voices(data)
     # Mark what this account may actually use, so the studio can show a lock
     # instead of letting someone click into a refusal. Still a plain array —
@@ -751,8 +807,11 @@ async def voices(request: Request) -> JSONResponse:
             str(v["id"]), str(v.get("gender") or ""))
     _named = voice_names.pretty_all(
         [(str(v["id"]), str(v.get("name") or ""), str(v.get("lang") or "en"),
-          str(v.get("gender") or "female")) for v in data])
+          str(v.get("gender") or "female")) for v in data
+         if not age_voice.split(str(v["id"]))[1]])
     _PICKER_NAMES.update(_named)
+    _PICKER_NAMES.update({str(v["id"]): str(v["name"]) for v in data
+                          if age_voice.split(str(v["id"]))[1]})
     for v in data:
         v["name"] = _named.get(str(v["id"]), v.get("name"))
         v["premium"] = entitlements.is_premium_voice(str(v["id"]))
@@ -1212,7 +1271,7 @@ async def _run_song_job(sid: str, owner: str, p: dict) -> None:
     except Exception as e:
         print(f"[song] job {sid} failed: {e!r}")
         await db.update_song(sid, status="failed", current_step="Failed",
-                             error=repr(e)[:300])
+                             error=_public_error(e))
         # Songs are charged up front; give it back when one does not arrive.
         try:
             async with db.pool.connection() as _c:
@@ -1391,7 +1450,7 @@ async def melody_summary(request: Request) -> JSONResponse:
     except sargam.NotationError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:  # pragma: no cover
-        return JSONResponse({"error": repr(e)[:200]}, status_code=400)
+        return JSONResponse({"error": _public_error(e)}, status_code=400)
 
 
 async def melody_render(request: Request) -> Response:
@@ -1419,7 +1478,7 @@ async def melody_render(request: Request) -> Response:
     except sargam.NotationError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:  # pragma: no cover
-        return JSONResponse({"error": repr(e)[:200]}, status_code=500)
+        return JSONResponse({"error": _public_error(e)}, status_code=400 if getattr(e, "public", False) else 500)
     return Response(
         content=audio, media_type="audio/mpeg",
         headers={"Content-Disposition": 'inline; filename="melody.mp3"'},
@@ -1446,10 +1505,23 @@ DUB_LANG_NAMES = {
 _VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
 
+def _engine_or_if5_wav(text: str, voice: str) -> tuple[bytes, str]:
+    """One WAV take in a library voice, IndicF5 HD voices included (ENGINE
+    does not hold those; the studios that only asked ENGINE failed on them)."""
+    if voice.startswith("if5-"):
+        ref = _if5_ref(voice)
+        if not ref:
+            raise EngineError(f"unknown voice {voice}")
+        return if5_synth(text, ref[0], ref[1], fmt="wav")
+    return ENGINE.synthesize(
+        text=text, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="wav")
+
+
 def _run_dub_pipeline(jid: str, in_path: str, ext: str, tgt: str,
                       voice: str, keep_bg: float) -> None:
     """Heavy dubbing work (runs in a threadpool)."""
     import tempfile as _tf
+    voice, _age = age_voice.split(voice)
     try:
         _dub_jobs[jid].update(status="processing", step="Extracting audio", progress=10)
         is_video = ext in _VIDEO_EXT
@@ -1471,8 +1543,8 @@ def _run_dub_pipeline(jid: str, in_path: str, ext: str, tgt: str,
         _dub_jobs[jid].update(step="Re-voicing", progress=70)
 
         def tts_fn(text: str) -> str:
-            wavb, _m = ENGINE.synthesize(
-                text=text, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="wav")
+            wavb, _m = _whole_take(lambda: _engine_or_if5_wav(text, voice), voice, text)
+            wavb, _m = age_voice.apply(wavb, _m, _age, tgt, voice)
             p = _tf.mktemp(suffix=".wav")
             with open(p, "wb") as f:
                 f.write(wavb)
@@ -1535,7 +1607,7 @@ def _run_dub_pipeline(jid: str, in_path: str, ext: str, tgt: str,
                 print(f"[dub] refunded {_owed} characters to {_who}")
             except Exception as _re:
                 print(f"[dub] REFUND FAILED for {_who}: {_re!r}")
-        _dub_jobs[jid].update(status="failed", step="Failed", error=repr(e)[:300])
+        _dub_jobs[jid].update(status="failed", step="Failed", error=_public_error(e))
     finally:
         for p in (in_path, str(DUB_DIR / f"{jid}_src.wav"),
                   str(DUB_DIR / f"{jid}_dub.wav")):
@@ -1645,7 +1717,8 @@ AGENT_SYS = (
     "plain, simple English (your reply is translated for the user, so avoid idioms "
     "and wordplay). Keep replies short and conversational, 1-2 sentences: they "
     "will be spoken aloud. Never use placeholders such as [name], lists, quotation "
-    "marks, emojis or formatting. Be helpful for everyday and small-business tasks."
+    "marks, emojis or formatting. Use everyday words, never phrases like feel free, "
+    "stop by, check out or reach out. Be helpful for everyday and small-business tasks."
 )
 # English shadows of what was said in another language, so the model reads past
 # turns in English too (it understands Indian scripts poorly: a Tamil "tomorrow"
@@ -1688,14 +1761,49 @@ def _agent_language(text: str, hint: str | None = None) -> str:
     return code
 
 
-def _llm_chat(messages: list, max_tokens: int = 220) -> str:
+def _llm_chat(messages: list, max_tokens: int = 220, temperature: float = 0.7) -> str:
     import urllib.request
     url = os.environ.get("LLM_URL", "http://127.0.0.1:8005") + "/chat"
     req = urllib.request.Request(
-        url, data=json.dumps({"messages": messages, "max_tokens": max_tokens}).encode(),
+        url, data=json.dumps({"messages": messages, "max_tokens": max_tokens,
+                              "temperature": temperature}).encode(),
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as r:
         return json.loads(r.read())["reply"]
+
+
+# Idioms the translator renders word for word. Measured: the agent's "feel free
+# to stop by" came back in Malayalam and Odia as "stop" (halt), and an ad's "taste
+# the difference" as "taste the difference (between two things)". The model is
+# told not to use them and still does, so they are rewritten into plain words
+# before the English is translated. Applied to English that is about to be
+# translated only; English replies are left as written.
+_PLAIN = [(re.compile(p, re.I), r) for p, r in [
+    (r"\bplease feel free to\b", "please"), (r"\bfeel free to\b", "you can"),
+    (r"\b(stop|drop|swing|come|pop) (by|in|over)\b", "visit"),
+    (r"\bcheck (it|them|this) out\b", "have a look"), (r"\bcheck out\b", "see"),
+    (r"\breach out to\b", "contact"), (r"\breach out\b", "contact us"),
+    (r"\bget in touch with\b", "contact"), (r"\bget in touch\b", "contact us"),
+    (r"\bgive us a (call|ring|buzz)\b", "call us"), (r"\bgrab (a|an|some)\b", r"get \1"),
+    (r"\bon the house\b", "free"), (r"\bhit the spot\b", "taste very good"),
+    (r"\btaste the difference\b", "taste how good it is"), (r"\btreat yourself\b", "enjoy something special"),
+    (r"\bdon'?t miss out\b", "do not miss this"), (r"\bin no time\b", "very quickly"),
+    (r"\b(a )?piece of cake\b", "very easy"), (r"\bhang out\b", "spend time"),
+    (r"\bASAP\b", "as soon as possible"), (r"\bno worries\b", "no problem"),
+    (r"\bwhat are you waiting for\b", "come today"),
+    # "class" is a lesson here, but the translator read "first class free" as
+    # "प्रथम श्रेणी मुफ्त" (first division) in a live tuition ad
+    (r"\b(trial|demo) classes\b", r"\1 lessons"), (r"\b(trial|demo) class\b", r"\1 lesson"),
+    (r"\b(first|free) class\b(?=[^.!?]*\b(free|tuition|lesson|teach|course)\b|\s+(is\s+)?free\b)", r"\1 lesson"),
+]]
+
+
+def _plain_english(text: str) -> str:
+    out = text
+    for rx, r in _PLAIN:
+        out = rx.sub(r, out)
+    # a rewrite at the start of a sentence keeps the capital letter
+    return re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), out)
 
 
 def _agent_tts(text: str, lang: str = "en") -> bytes:
@@ -1708,13 +1816,15 @@ def _agent_tts(text: str, lang: str = "en") -> bytes:
         t = _native_script(t, voice)
     elif hinglish.is_hindi_voice(voice) or voice.startswith("if5"):
         t = hinglish.to_devanagari(t, speak_english=_needs_english_in_devanagari(voice))
-    if voice.startswith("if5-"):
-        ref = _if5_ref(voice)
-        if ref:
-            audio, _m = if5_synth(t, ref[0], ref[1], fmt="mp3")
-            return audio
-    audio, _m = ENGINE.synthesize(
-        text=t, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="mp3")
+    def make():
+        if voice.startswith("if5-"):
+            ref = _if5_ref(voice)
+            if ref:
+                return if5_synth(t, ref[0], ref[1], fmt="mp3")
+        return ENGINE.synthesize(
+            text=t, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="mp3")
+
+    audio, _m = _whole_take(make, voice, t)
     return audio
 
 
@@ -1738,9 +1848,10 @@ def _agent_turn(history: list, user_text: str, lang_hint: str | None = None) -> 
     # measured to be ignored by the model, and earlier replies in the user's
     # language pull it away from English.
     msgs.append({"role": "user", "content": asked + "\n\n(Reply in English only.)"})
-    english = _agent_clean(_llm_chat(msgs))
+    english = _agent_clean(_llm_chat(msgs, temperature=0.5))
     reply = english
     if lang != "en":
+        english = _plain_english(english)
         sentences = [s for s in re.split(r"(?<=[.!?])\s+", english) if s.strip()]
         try:
             reply = _agent_clean(" ".join(dubbing.translate(sentences, "en", lang)))
@@ -1765,7 +1876,7 @@ async def agent_chat(request: Request) -> JSONResponse:
     try:
         reply, uri = await run_in_threadpool(_agent_turn, history, text)
     except Exception as e:
-        return JSONResponse({"error": repr(e)[:200]}, status_code=500)
+        return JSONResponse({"error": _public_error(e)}, status_code=400 if getattr(e, "public", False) else 500)
     return JSONResponse({"transcript": text, "reply": reply, "audio": uri})
 
 
@@ -1800,7 +1911,7 @@ async def agent_voice(request: Request) -> JSONResponse:
     try:
         res = await run_in_threadpool(_work)
     except Exception as e:
-        return JSONResponse({"error": repr(e)[:200]}, status_code=500)
+        return JSONResponse({"error": _public_error(e)}, status_code=400 if getattr(e, "public", False) else 500)
     finally:
         for p in (src, wav):
             try:
@@ -1840,7 +1951,7 @@ def _run_sfx(jid: str, prompt: str, duration: float) -> None:
                 print(f"[sfx] refunded {_owed} characters to {_who}")
             except Exception as _re:
                 print(f"[sfx] REFUND FAILED for {_who}: {_re!r}")
-        _sfx_jobs[jid].update(status="failed", step="Failed", error=repr(e)[:200])
+        _sfx_jobs[jid].update(status="failed", step="Failed", error=_public_error(e))
 
 
 async def sfx_create(request: Request) -> JSONResponse:
@@ -1919,13 +2030,14 @@ def _split_chunks(text: str, maxlen: int = 350) -> list[str]:
 
 def _run_audiobook(jid: str, text: str, voice: str, gap_ms: int) -> None:
     import tempfile as _tf
+    voice, _age = age_voice.split(voice)
     try:
         _book_jobs[jid].update(status="processing", step="Preparing", progress=5)
         chunks = _split_chunks(text)
         if not chunks:
             raise RuntimeError("no text")
         BOOK_DIR.mkdir(exist_ok=True)
-        is_hi = hinglish.is_hindi_voice(voice)
+        is_hi = hinglish.is_hindi_voice(voice) or voice.startswith("if5")
         parts = []
         silence = str(BOOK_DIR / f"{jid}_sil.wav")
         subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-t", str(max(0.1, gap_ms / 1000)),
@@ -1937,8 +2049,8 @@ def _run_audiobook(jid: str, text: str, voice: str, gap_ms: int) -> None:
             t = normalize_speech_text(ch, _speech_lang(voice))
             t = _native_script(t, voice) if hinglish.script_language(voice) else (
                 hinglish.to_devanagari(t) if is_hi else t)
-            wavb, _m = ENGINE.synthesize(
-                text=t, voice_id=voice, rate=1.0, pitch=1.0, volume=1.0, fmt="wav")
+            wavb, _m = _whole_take(lambda: _engine_or_if5_wav(t, voice), voice, t)
+            wavb, _m = age_voice.apply(wavb, _m, _age, _speech_lang(voice) or "", voice)
             p = str(BOOK_DIR / f"{jid}_p{i}.wav")
             with open(p, "wb") as f:
                 f.write(wavb)
@@ -1963,7 +2075,7 @@ def _run_audiobook(jid: str, text: str, voice: str, gap_ms: int) -> None:
                 pass
     except Exception as e:
         print(f"[audiobook] {jid} failed: {e!r}")
-        _book_jobs[jid].update(status="failed", step="Failed", error=repr(e)[:200])
+        _book_jobs[jid].update(status="failed", step="Failed", error=_public_error(e))
 
 
 async def audiobook_create(request: Request) -> JSONResponse:
@@ -2013,6 +2125,7 @@ _an_jobs: dict = {}
 
 def _run_audionative(aid: str, text: str, voice: str, title: str, owner: str) -> None:
     import tempfile as _tf
+    voice, _age = age_voice.split(voice)
     try:
         _an_jobs[aid].update(status="processing", step="Narrating", progress=10)
         chunks = _split_chunks(text)
@@ -2029,12 +2142,9 @@ def _run_audionative(aid: str, text: str, voice: str, title: str, owner: str) ->
             t = normalize_speech_text(ch, _speech_lang(voice))
             t = _native_script(t, voice) if hinglish.script_language(voice) else (
                 hinglish.to_devanagari(t) if is_hi else t)
-            if voice.startswith("if5-"):
-                ref = _if5_ref(voice)
-                wavb, _m = if5_synth(t, ref[0], ref[1], fmt="wav") if ref else (b"", "")
-            else:
-                wavb, _m = ENGINE.synthesize(text=t, voice_id=voice, rate=1.0,
-                                             pitch=1.0, volume=1.0, fmt="wav")
+            wavb, _m = _whole_take(lambda: _engine_or_if5_wav(t, voice), voice, t)
+            if wavb:
+                wavb, _m = age_voice.apply(wavb, _m, _age, _speech_lang(voice) or "", voice)
             p = str(AN_DIR / f"{aid}_p{i}.wav")
             with open(p, "wb") as f:
                 f.write(wavb)
@@ -2058,7 +2168,7 @@ def _run_audionative(aid: str, text: str, voice: str, title: str, owner: str) ->
         _an_jobs[aid].update(status="done", step="Completed", progress=100)
     except Exception as e:
         print(f"[audionative] {aid} failed: {e!r}")
-        _an_jobs[aid].update(status="failed", step="Failed", error=repr(e)[:200])
+        _an_jobs[aid].update(status="failed", step="Failed", error=_public_error(e))
 
 
 async def audionative_create(request: Request) -> JSONResponse:
@@ -2154,13 +2264,21 @@ _ADS_LANG = {"en": "English", "hi": "Hindi", "ta": "Tamil", "te": "Telugu",
 
 
 def _ads_synth(text: str, voice: str) -> bytes:
-    if voice.startswith("if5-"):
-        ref = _if5_ref(voice)
-        if ref:
-            a, _m = if5_synth(text, ref[0], ref[1], fmt="mp3")
-            return a
-    a, _m = ENGINE.synthesize(text=text, voice_id=voice, rate=1.0, pitch=1.0,
-                              volume=1.0, fmt="mp3")
+    voice, _age = age_voice.split(voice)
+    fmt = "wav" if _age else "mp3"
+
+    def make():
+        if voice.startswith("if5-"):
+            ref = _if5_ref(voice)
+            if ref:
+                return if5_synth(text, ref[0], ref[1], fmt=fmt)
+        return ENGINE.synthesize(text=text, voice_id=voice, rate=1.0, pitch=1.0,
+                                 volume=1.0, fmt=fmt)
+
+    a, _m = _whole_take(make, voice, text)
+    if _age:
+        a, _m = age_voice.apply(a, _m, _age, _speech_lang(voice) or "", voice)
+        a, _m = _wav_to_mp3(a)
     return a
 
 
@@ -2169,6 +2287,41 @@ _AD_EXAMPLE = (
     "A new bakery has opened in Indore. Fresh cakes, warm bread and sweet treats are "
     "waiting for you. Come this Sunday and taste our free samples. We look forward to "
     "seeing you!")
+
+
+_AD_EDIT_SYS = (
+    "You are a careful editor. You get a brief and a short ad written from it. Delete every "
+    "word, phrase or sentence that adds a fact, condition, product, quantity or claim the "
+    "brief does not give (for example 'bring a friend', 'meet new friends', 'all our teas', "
+    "'best in town'). Friendly words and the closing invitation are fine. Change nothing else, "
+    "do not add anything, keep the sentences in English. Output only the corrected ad.")
+_AD_STOP = {"the", "and", "with", "for", "this", "that", "our", "your", "from", "are", "new", "has",
+            "have", "will", "all", "its", "now", "get", "you", "can", "who", "into", "out", "off"}
+
+
+def _ad_edit(brief: str, english: str) -> str:
+    """Second pass that deletes what the brief never said. Measured 9 Nov 2026 on
+    real ads: it removed "meet new friends", "on all our teas" and an invented
+    offer condition ("Bring a friend and get the first class free"), but once it
+    also deleted a real fact ("The sale ends this Sunday"). So an edit is only
+    kept if every brief word the ad carried is still there; otherwise the ad
+    stays as written. Skipped for briefs not in English, where that cannot be
+    checked."""
+    if len(re.findall(r"[A-Za-z]", brief)) < 0.6 * max(1, len(re.sub(r"\W", "", brief))):
+        return english
+    try:
+        edited = _llm_chat([{"role": "system", "content": _AD_EDIT_SYS},
+                            {"role": "user", "content": f"Brief: {brief}\nAd: {english}"}],
+                           max_tokens=240, temperature=0.1).strip().strip('"')
+    except Exception as e:  # the unedited ad is still a good ad
+        print(f"[ads] edit pass failed: {e!r}")
+        return english
+    words = lambda t: set(re.findall(r"[a-z0-9%]+", t.lower()))  # noqa: E731
+    facts = {w for w in words(brief) if len(w) >= 3 and w not in _AD_STOP} & words(english)
+    if edited and facts <= words(edited) and len(edited) >= 0.5 * len(english):
+        return edited
+    print(f"[ads] edit pass dropped a fact ({sorted(facts - words(edited))}); keeping the ad")
+    return english
 
 
 def _ad_script(brief: str, lang: str, tone: str, seconds: int) -> tuple[str, str]:
@@ -2185,14 +2338,25 @@ def _ad_script(brief: str, lang: str, tone: str, seconds: int) -> tuple[str, str
             "wordplay: the ad may be translated. "
             f"About {words} words in 3 to 5 short sentences, ending with an invitation. "
             "Output only the words to be spoken: no labels, quotes or emojis.")
-    english = _llm_chat([{"role": "system", "content": sysp},
-                         {"role": "user", "content": _AD_EXAMPLE[0]},
-                         {"role": "assistant", "content": _AD_EXAMPLE[1]},
-                         {"role": "user", "content": f"Brief: {brief}\nTone: {tone}"}],
-                        max_tokens=320).strip().strip('"')
+    msgs = [{"role": "system", "content": sysp},
+            {"role": "user", "content": _AD_EXAMPLE[0]},
+            {"role": "assistant", "content": _AD_EXAMPLE[1]},
+            {"role": "user", "content": f"Brief: {brief}\nTone: {tone}"}]
+    # Cooler than the 0.7 default: at 0.7 it added facts ("all beverages", "meet
+    # new friends"). And a number the brief never gave (a price, a time, a
+    # percentage) is never allowed through: one more try, then it is cut.
+    english = _llm_chat(msgs, max_tokens=320, temperature=0.4).strip().strip('"')
+    given = set(re.findall(r"\d+", brief))
+    invented = lambda t: [n for n in re.findall(r"\d+", t) if n not in given]  # noqa: E731
+    if invented(english):
+        retry = _llm_chat(msgs, max_tokens=320, temperature=0.3).strip().strip('"')
+        english = retry if not invented(retry) else " ".join(
+            x for x in re.split(r"(?<=[.!?])\s+", english) if not invented(x)) or retry
+    english = _ad_edit(brief, english)
     if lang == "en":
         return english, english
-    sentences = [s for s in re.split(r"(?<=[.!?])\s+", english) if s.strip()]
+    english_for_tr = _plain_english(english)
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", english_for_tr) if s.strip()]
     try:
         return " ".join(dubbing.translate(sentences, "en", lang)), english
     except Exception as e:  # translator away: write directly in the language
@@ -2224,7 +2388,7 @@ def _run_ads(aid: str, brief: str, lang: str, voice: str, tone: str, seconds: in
                               script_en=english)
     except Exception as e:
         print(f"[ads] {aid} failed: {e!r}")
-        _ads_jobs[aid].update(status="failed", step="Failed", error=repr(e)[:200])
+        _ads_jobs[aid].update(status="failed", step="Failed", error=_public_error(e))
 
 
 async def ads_create(request: Request) -> JSONResponse:
@@ -2289,7 +2453,7 @@ def _run_isolate(jid: str, in_path: str) -> None:
         _iso_jobs[jid].update(status="done", progress=100, step="Completed", kinds=kinds)
     except Exception as e:
         print(f"[isolate] {jid} failed: {e!r}")
-        _iso_jobs[jid].update(status="failed", step="Failed", error=repr(e)[:200])
+        _iso_jobs[jid].update(status="failed", step="Failed", error=_public_error(e))
     finally:
         for p in (in_path, str(ISOLATE_DIR / f"{jid}_norm.wav")):
             try:
@@ -2389,7 +2553,7 @@ async def transcribe_audio(request: Request) -> JSONResponse:
     try:
         segs, lang = await run_in_threadpool(_work)
     except Exception as e:
-        return JSONResponse({"error": repr(e)[:200]}, status_code=500)
+        return JSONResponse({"error": _public_error(e)}, status_code=400 if getattr(e, "public", False) else 500)
     finally:
         for p in (src, wav):
             try:
@@ -2450,6 +2614,9 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     voice_id = str(body.get("voiceId", "")).strip()
     if not voice_id:
         return JSONResponse({"error": "voiceId required"}, status_code=400)
+    # Child / grandparent voice: render its adult voice, reshape at the end.
+    req_vid = voice_id
+    voice_id, _age = age_voice.split(voice_id)
 
     # Cloned voice? Resolve the user's sample + language (owner-scoped lookup).
     clone = None
@@ -2488,7 +2655,7 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
             # Introduce itself by the name on its card. The engine's own label
             # is often just the language ("मैं Hindi हूँ" from a voice the
             # picker calls Vaishali).
-            name = _PICKER_NAMES.get(voice_id, name)
+            name = _PICKER_NAMES.get(req_vid, _PICKER_NAMES.get(voice_id, name))
         tmpl = PREVIEW_TEMPLATES.get(lang, PREVIEW_TEMPLATES["en"])
         text = tmpl.format(n=name)
     else:
@@ -2567,6 +2734,13 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         cache_vid = f"{voice_id}@{emotion}"
         if abs(intensity - 1.0) > 1e-3:
             cache_vid += f"#{intensity:.2f}"
+        # svara emotion shaping changes the audio, so it is part of the identity
+        # (an older flat render must never be served for the new sound).
+        if voice_id.startswith("svara-") and _SVARA_EMO and (emotion in _SVARA_EMO or emotion == "auto"):
+            cache_vid += "~sv2:" + ",".join(f"{e}{k:g}" for e, k in sorted(_SVARA_EMO.items()))
+
+    if _age:
+        cache_vid += f"~{_age}.{age_voice.VERSION}"
 
     # Emotion prosody: scale the user's sliders by the emotion's feel factors
     # (themselves scaled by intensity) so happy is brighter/faster, sad
@@ -2612,6 +2786,30 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
 
     async def _render(t_: str, emo_: str, r_: float, p_: float, v_: float,
                       fmt_: str):
+        """One feeling, one chunk, in the voice asked for (aged if it is one)."""
+        audio, mime = await _render_base(t_, emo_, r_, p_, v_, fmt_)
+        # An engine now and then returns a fragment (if5-aanya once gave 0.3 s
+        # for 61 characters, 10 Nov 2026). The cache already refused to keep
+        # such a take but it still went to the customer and was charged. Try
+        # once more; if the second take is a fragment too, fail (the caller
+        # refunds) rather than deliver a stub.
+        why = _fragment(voice_id, t_, r_, audio)
+        if why:
+            print(f"[voxforge] {voice_id}: {why}; rendering it once more", flush=True)
+            audio, mime = await _render_base(t_, emo_, r_, p_, v_, fmt_)
+            why = _fragment(voice_id, t_, r_, audio)
+            if why:
+                print(f"[voxforge] {voice_id}: second take also {why}; giving up", flush=True)
+                raise EngineError(_INCOMPLETE)
+        if _age:
+            audio, mime = await run_in_threadpool(
+                age_voice.apply, audio, mime, _age, _voice_owner(voice_id)[1], voice_id)
+            if fmt_ != "wav":
+                audio, mime = await run_in_threadpool(_wav_to_mp3, audio)
+        return audio, mime
+
+    async def _render_base(t_: str, emo_: str, r_: float, p_: float, v_: float,
+                           fmt_: str):
         """Run the right engine for this voice (one feeling, one chunk)."""
         if voice_id == "vagdhenu-sa-chant":
             meter = str(body.get("meter", "auto")).strip() or "auto"
@@ -2654,6 +2852,19 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
         else:
             owner, vlang = _voice_owner(voice_id)
             native = owner in _NATIVE_EMOTION_ENGINES
+            if owner == "SvaraEngine" and emo_ in _SVARA_EMO:
+                # svara acts the feeling (its tag), rendered with the user's own
+                # sliders only; the feeling's melody, pace, loudness and tone
+                # colour come from shape_svara instead of the flat nudge.
+                wav, _m = await run_in_threadpool(
+                    ENGINE.synthesize, text=t_, voice_id=voice_id, rate=rate,
+                    pitch=pitch, volume=volume, fmt="wav", emotion=emo_)
+                shaped = await run_in_threadpool(
+                    _svara_shape, wav, emo_, intensity * _SVARA_EMO[emo_], vlang, volume)
+                if shaped is not None:
+                    if fmt_ == "wav":
+                        return shaped, "audio/wav"
+                    return await run_in_threadpool(_wav_to_mp3, shaped)
             if native or emo_ in ("neutral", "auto"):
                 return await run_in_threadpool(
                     ENGINE.synthesize,
@@ -2889,6 +3100,60 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     return Response(audio, media_type=mime, headers=_audio_headers("MISS"))
 
 
+def _audio_seconds(audio: bytes) -> float | None:
+    """Length of a take: from the WAV header, else by decoding it (mp3). ffprobe
+    cannot be used here: reading from a pipe it reports the duration as N/A."""
+    secs = cache._wav_seconds(audio)
+    if secs is not None or not audio:
+        return secs
+    try:
+        r = subprocess.run(["ffmpeg", "-v", "error", "-i", "pipe:0", "-ac", "1", "-ar", "8000",
+                            "-f", "s16le", "pipe:1"],
+                           input=audio, capture_output=True, timeout=30)
+        return len(r.stdout) / 16000 if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _fragment(voice_id: str, text: str, rate, audio: bytes) -> str:
+    """Why a take is a fragment of what was asked ("too short ..."), or "".
+    The cache's rule (speech runs 12-18 characters a second; under a third of
+    the slowest reading is a fragment), but counting only letters and digits:
+    a scene break such as "* * * * * * * * * * * * *" is meant to be silent."""
+    if str(voice_id).startswith("vagdhenu"):
+        return ""
+    n = sum(ch.isalnum() for ch in text or "")
+    if n < 25:
+        return ""
+    secs = _audio_seconds(audio)
+    if secs is None or secs != secs:
+        return ""
+    speed = max(float(rate or 1.0), 0.25)
+    if secs < n / 18 / 3 / speed:
+        return f"too short ({secs:.1f}s for {n} letters)"
+    return ""
+
+
+def _whole_take(make, voice_id: str, text: str, rate=1.0):
+    """make() -> (audio, mime), re-rendered once if the engine returned a
+    fragment; a second fragment raises EngineError instead of delivering a stub
+    (the callers refund whatever was charged)."""
+    audio, mime = make()
+    why = _fragment(voice_id, text, rate, audio)
+    if why:
+        print(f"[voxforge] {voice_id}: {why}; rendering it once more", flush=True)
+        audio, mime = make()
+        why = _fragment(voice_id, text, rate, audio)
+        if why:
+            print(f"[voxforge] {voice_id}: second take also {why}; giving up", flush=True)
+            raise EngineError(_INCOMPLETE)
+    return audio, mime
+
+
+_INCOMPLETE = ("The voice returned an incomplete take. "
+               "Please try again; you have not been charged.")
+
+
 # Engines whose model really acts emotions; everything else gets its melody
 # reshaped instead (measured: reshaping moves pitch spread by 2-3 semitones,
 # the old flat pitch shift moved it by ~0).
@@ -2906,6 +3171,23 @@ def _voice_owner(voice_id: str) -> tuple[str, str]:
         except Exception as e:  # pragma: no cover - never break synthesis
             print(f"[voxforge] voice owner map failed: {e!r}")
     return _VOICE_OWNER.get(voice_id, ("", "en"))
+
+
+def _svara_shape(wav: bytes, emotion: str, strength: float, lang: str,
+                 volume: float = 1.0) -> bytes | None:
+    """shape_svara on a WAV; None when it did not apply (caller falls back)."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+        path = tf.name
+        tf.write(wav)
+    try:
+        if not expressive_dsp.shape_svara(path, emotion, strength, lang, volume):
+            return None
+        with open(path, "rb") as f:
+            return f.read()
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
 
 
 def _tone_shape(wav: bytes, emotion: str, intensity: float, lang: str) -> bytes | None:
@@ -3292,6 +3574,18 @@ MAX_BODY = int(os.environ.get("VOXFORGE_MAX_BODY", str(1024 * 1024)))  # 1 MB
 MAX_CLONE_BODY = int(
     os.environ.get("VOXFORGE_MAX_CLONE_BODY", str(12 * 1024 * 1024))
 )  # 12 MB for voice-clone audio uploads
+# Studios that take a file. Until 9 Nov 2026 these fell under MAX_BODY (1 MB),
+# so every real video or recording was refused with 413 before the studio's own
+# check (200 MB dubbing, 100 MB isolate/transcribe) could run. 1 MB of headroom
+# over each studio's limit lets that studio answer with its own clear message.
+_MB = 1024 * 1024
+_UPLOAD_LIMITS = {
+    "/dub": 201 * _MB,
+    "/isolate": 101 * _MB,
+    "/transcribe": 101 * _MB,
+    "/agent/voice": 25 * _MB,   # a spoken question, recorded in the browser
+    "/stt/fast": 8 * _MB,       # a <=30 s clip sent as base64 JSON (~1.3 MB)
+}
 # Voice cloning: language ids accepted (Chatterbox multilingual) + storage dir.
 _CLONE_LANGS = {
     "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja",
@@ -3322,7 +3616,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             MAX_CLONE_BODY
             if request.url.path in ("/voices/clone", "/voices/clone-if5",
                                      "/voices/clone-hd", "/song/extract")
-            else MAX_BODY
+            else _UPLOAD_LIMITS.get(request.url.path, MAX_BODY)
         )
         cl = request.headers.get("content-length")
         if cl and cl.isdigit() and int(cl) > limit:

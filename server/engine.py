@@ -1497,6 +1497,17 @@ def vagdhenu_synth(
 # --------------------------------------------------------------------------- #
 # Composite — expose every available engine's voices at once
 # --------------------------------------------------------------------------- #
+def _expressive(body: str, tag: str, temp: float) -> tuple[str, float]:
+    """Emotional svara lines: sample a little more freely, and end sentences the
+    way the feeling would (! for joy and anger, a trailing ... for sadness).
+    Switched on by PRAPTHI_SVARA_EXPRESSIVE=1 only if the night measurement of
+    9-10 Nov 2026 found it stronger."""
+    end = "!" if tag in ("<happy>", "<anger>") else ("..." if tag == "<sad>" else "")
+    if end:
+        body = re.sub(r"[.\u0964!?]*$", end, body.rstrip(), count=1)
+    return body, min(1.0, temp + 0.15)
+
+
 class SvaraEngine:
     """Real emotional Indic speech via svara-TTS (kenpath/svara-tts-v1, Apache-2.0).
 
@@ -1557,7 +1568,25 @@ class SvaraEngine:
         "svara-bho-m": ("Bhojpuri", "bho-IN", "male", "bh_male"),
         "svara-en-f": ("English (Indian)", "en-IN", "female", "en_female"),
         "svara-en-m": ("English (Indian)", "en-IN", "male", "en_male"),
+        # The rest of svara's standard speakers (9-10 Nov 2026). These five
+        # languages had only Parler or MMS voices, neither of which acts an
+        # emotion; svara does, through its sentence-end tags. Each was
+        # checked at night for reading, gender and emotion before release.
+        "svara-mag-f": ("Magahi", "mag-IN", "female", "mag_female"),
+        "svara-mag-m": ("Magahi", "mag-IN", "male", "mag_male"),
+        "svara-mai-f": ("Maithili", "mai-IN", "female", "mai_female"),
+        "svara-mai-m": ("Maithili", "mai-IN", "male", "mai_male"),
+        "svara-hne-f": ("Chhattisgarhi", "hne-IN", "female", "hne_female"),
+        "svara-hne-m": ("Chhattisgarhi", "hne-IN", "male", "hne_male"),
+        "svara-brx-f": ("Bodo", "brx-IN", "female", "brx_female"),
+        "svara-brx-m": ("Bodo", "brx-IN", "male", "brx_male"),
+        "svara-doi-f": ("Dogri", "doi-IN", "female", "doi_female"),
+        "svara-doi-m": ("Dogri", "doi-IN", "male", "doi_male"),
+        "svara-as-m": ("Assamese", "as-IN", "male", "as_male"),
+        "svara-ne-m": ("Nepali", "ne-NP", "male", "ne_male"),
     }
+    # Speakers that are switched off if the night check fails them.
+    _OFF = frozenset(x.strip() for x in os.environ.get("PRAPTHI_SVARA_OFF", "").split(",") if x.strip())
 
     # our emotion vocabulary -> svara sentence-end tag ("" = no tag / neutral)
     _EMO_TAG = {
@@ -1590,7 +1619,7 @@ class SvaraEngine:
         return [
             VoiceInfo(id=vid, name=f"{disp} (Svara, Emotional)", lang=lang, gender=g)
             for vid, (disp, lang, g, _sv) in self._VOICES.items()
-            if vid not in self._UNLISTED
+            if vid not in self._UNLISTED and vid not in self._OFF
         ]
 
     def synthesize(
@@ -1630,6 +1659,8 @@ class SvaraEngine:
         hindi = lang in ("hi-IN", "bho-IN")
         temp = 0.8 if hindi else 0.6
 
+        if tag and os.environ.get("PRAPTHI_SVARA_EXPRESSIVE", "0") == "1":
+            body, temp = _expressive(body, tag, temp)
         payload = {
             "model": "svara-tts-v1",
             "voice": svara_voice,

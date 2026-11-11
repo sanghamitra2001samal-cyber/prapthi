@@ -14,6 +14,7 @@ Indic langs). TTS: the app's Parler engine (passed in as `tts_fn`).
 from __future__ import annotations
 
 import os
+import re
 
 import idle_models
 import subprocess
@@ -115,9 +116,19 @@ def _dur(path: str) -> float:
         return 0.0
 
 
+class NoAudioError(ValueError):
+    """The upload has no readable audio. Its message is shown to the customer."""
+    public = True
+
+
 def extract_audio(in_path: str, wav_path: str) -> None:
-    subprocess.run(["ffmpeg", "-y", "-i", in_path, "-vn", "-ac", "1",
-                    "-ar", "16000", wav_path], capture_output=True)
+    r = subprocess.run(["ffmpeg", "-y", "-i", in_path, "-vn", "-ac", "1",
+                        "-ar", "16000", wav_path], capture_output=True)
+    # Until 9 Nov 2026 a failure here passed silently and the job died later on a
+    # missing file, showing the customer a server path.
+    if r.returncode != 0 or not os.path.exists(wav_path) or os.path.getsize(wav_path) < 2000:
+        raise NoAudioError("We couldn't find any sound in this file. Please upload a video or "
+                           "audio file with speech in it (MP4, MOV, MP3, WAV, M4A).")
 
 
 def _get_stt_accurate():
@@ -295,6 +306,39 @@ def _it2_translate(it2, texts: list[str], src: str, tgt: str) -> list[str]:
     return out
 
 
+# Names inside English text (a shop, a person, a product) must come out as names.
+# IndicTrans2 translated the common words in them: "Ganesh Sweets" became
+# "गणेश मिठाई", "Sharma Tea Stall" "శర్మ టీ దుకాణం". Writing the name in the
+# target script first was worse ("Prapthi AI" -> "प्रेरणा"). What works is the
+# model's own placeholder: it was trained to copy <IDn> through untouched, so a
+# multi-word Capitalised name rides through as <ID9n> and is put back in Latin,
+# which every voice's text preparation then speaks in its own script. Measured
+# 9 Nov 2026 on hi/ta/bn/te/mr: 25/25 names kept once the model's own spelling
+# of the tag (<आयडी90>, <আইডি90>) is recognised; sentences without a name are
+# byte-identical. A tag that does not come back falls back to the plain
+# translation of that sentence, so this can never be worse than before.
+_NAME = re.compile(r"\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,3}\b")
+_NOT_NAME = {"The", "A", "An", "I", "We", "You", "Thank", "Please", "Hello", "Hi", "Welcome",
+             "Good", "Dear", "Our", "Your", "This", "That", "Meet", "Call", "Visit", "At",
+             "To", "In", "On", "Happy", "Merry"}
+_NAME_TAG = re.compile(r"[<\[]\s*[^\s\d<>\[\]]{1,6}\s*(9\d)\s*[>\]]")
+
+
+def _protect_names(text: str) -> tuple[str, dict[int, str]]:
+    names: dict[int, str] = {}
+    for m in _NAME.finditer(text):
+        words = m.group(0).split()
+        while words and words[0] in _NOT_NAME:
+            words = words[1:]
+        if len(words) >= 2 and len(names) < 10:
+            name = " ".join(words)
+            if name not in names.values():
+                names[90 + len(names)] = name
+    for key, name in names.items():
+        text = text.replace(name, f"<ID{key}>")
+    return text, names
+
+
 def translate(texts: list[str], src: str, tgt: str) -> list[str]:
     """Translate between English and the Indian languages with IndicTrans2,
     and anything else with M2M-100."""
@@ -309,7 +353,22 @@ def translate(texts: list[str], src: str, tgt: str) -> list[str]:
         it2 = _get_it2(direction)
         if it2 is not None:
             code = lambda l: "eng_Latn" if l == "en" else IT2_LANG[l]  # noqa: E731
-            return _it2_translate(it2, texts, code(src), code(tgt))
+            if direction != "en-indic":
+                return _it2_translate(it2, texts, code(src), code(tgt))
+            wrapped = [_protect_names(t) for t in texts]
+            out = _it2_translate(it2, [w for w, _ in wrapped], code(src), code(tgt))
+            plain = None
+            for i, ((_w, names), o) in enumerate(zip(wrapped, out)):
+                if not names:
+                    continue
+                back = _NAME_TAG.sub(lambda m: names.get(int(m.group(1)), m.group(0)), o)
+                if all(n in back for n in names.values()) and not _NAME_TAG.search(back):
+                    out[i] = back
+                else:                       # the model lost a tag: plain translation
+                    if plain is None:
+                        plain = _it2_translate(it2, list(texts), code(src), code(tgt))
+                    out[i] = plain[i]
+            return out
     if tgt not in M2M_LANG:
         raise ValueError(f"cannot translate into '{tgt}' (IndicTrans2 unavailable)")
     import torch
