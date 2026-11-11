@@ -13,6 +13,7 @@ export interface Voice {
   clone?: boolean; // a user's cloned voice (deletable)
   premium?: boolean; // belongs to the paid plans
   locked?: boolean; // premium, and this account's plan does not include it
+  age?: 'child' | 'senior'; // child and grandparent voices; adults leave it unset
 }
 
 export interface SynthesisRequest {

@@ -32,6 +32,7 @@ export function VoicePicker() {
 
   const [query, setQuery] = useState('');
   const [gender, setGender] = useState<'all' | 'male' | 'female'>('all');
+  const [age, setAge] = useState<'all' | 'child' | 'senior'>('all');
   const [lang, setLang] = useState('all');
   const [downloadableOnly, setDownloadableOnly] = useState(false);
 
@@ -81,6 +82,7 @@ export function VoicePicker() {
     if (query && !fold(v.name).includes(fold(query)))
       return false;
     if (gender !== 'all' && v.gender !== gender) return false;
+    if (age !== 'all' && v.age !== age) return false;
     if (lang !== 'all' && !v.lang.startsWith(lang)) return false;
     if (downloadableOnly && !v.downloadable) return false;
     return true;
@@ -89,6 +91,7 @@ export function VoicePicker() {
   const clearFilters = () => {
     setQuery('');
     setGender('all');
+    setAge('all');
     setLang('all');
     setDownloadableOnly(false);
   };
@@ -120,6 +123,20 @@ export function VoicePicker() {
         </button>
         <button className={chip(gender === 'female')} onClick={() => setGender(gender === 'female' ? 'all' : 'female')}>
           Female
+        </button>
+        <button
+          className={chip(age === 'child')}
+          aria-pressed={age === 'child'}
+          onClick={() => setAge(age === 'child' ? 'all' : 'child')}
+        >
+          Children
+        </button>
+        <button
+          className={chip(age === 'senior')}
+          aria-pressed={age === 'senior'}
+          onClick={() => setAge(age === 'senior' ? 'all' : 'senior')}
+        >
+          Seniors
         </button>
         <select
           value={lang}

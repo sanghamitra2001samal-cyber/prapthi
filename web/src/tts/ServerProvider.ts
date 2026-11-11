@@ -113,6 +113,7 @@ export class ServerProvider implements TTSProvider {
       clone?: boolean;
       premium?: boolean;
       locked?: boolean;
+      age?: Voice['age'];
     }>;
     this.reachable = true;
     return data.map((v) => ({
@@ -127,6 +128,7 @@ export class ServerProvider implements TTSProvider {
       clone: v.clone,
       premium: v.premium,
       locked: v.locked,
+      age: v.age === 'child' || v.age === 'senior' ? v.age : undefined,
     }));
   }
 
