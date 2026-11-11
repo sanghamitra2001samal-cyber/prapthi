@@ -62,13 +62,106 @@ def profile(emotion: str, intensity: float = 1.0, lang: str = ""):
     return (1 + (shift - 1) * k, rng, 1 + (tempo - 1) * k, gain * k)
 
 
+# svara acts a feeling itself, but every one of its tags pushes the voice UP:
+# measured Sep 2026 against no tag, <happy> +102 Hz, <anger> +77 Hz, <sad>
+# +44 Hz. So sad never sounded sad and angry sounded like happy, and the flat
+# speed/volume nudge on top changed nothing a listener could hear (the owner,
+# 9 Nov 2026: "too weak", "sad is not sad", "angry sounds like happy", "fake").
+# On top of the tag, each feeling now also gets the shape real speech has:
+#   happy: higher, wider melody, a little brighter
+#   sad:   lower, flatter, slower, softer and duller (high frequencies down)
+#   angry: NOT higher than normal, wider melody, faster, louder, pressed and
+#          harsh (presence boost + compression) - the cue that sets it apart
+# feeling -> (pitch shift, range, tempo, level dB vs neutral, ffmpeg tone filter with {g}, tone dB)
+# "level" is set against the measured speaking level of neutral svara speech after
+# the shared finisher (-16.7 dBFS median over 14 clips, 9 Nov 2026). It cannot be a
+# plain gain: the finisher normalises each clip's PEAK, so angry speech, all sharp
+# peaks, came out 3.6 dB QUIETER than neutral before any shaping, and a compressor's
+# make-up could not win that back. Peaks are caught by a limiter instead.
+SVARA_LEVEL_DB = -16.7
+SVARA_PROFILES: dict[str, tuple[float, float, float, float, str, float]] = {
+    "happy": (1.05, 1.30, 1.04, 1.0, "highshelf=f=5000:g={g}", 3.0),
+    "sad": (0.92, 0.60, 0.93, -3.0, "highshelf=f=2800:g=-{g}", 4.0),
+    # the tag lifts anger ~77 Hz; pulling it back down is what keeps it from
+    # sounding like joy, and the pressed, compressed 1.8 kHz is the anger.
+    # svara's own tags already speed anger up and slow sadness down, so the
+    # tempo here is only a nudge (more measured as overacting: +32%, -22%).
+    "angry": (0.92, 1.25, 1.03, 4.0,
+              "acompressor=threshold=-30dB:ratio=5:attack=2:release=40,equalizer=f=1800:t=q:w=1.0:g={g}", 6.0),
+}
+
+
+def svara_profile(emotion: str, strength: float = 1.0, lang: str = ""):
+    p = SVARA_PROFILES.get(emotion)
+    if not p:
+        return None
+    shift, rng, tempo, level, tone, tone_db = p
+    k = max(0.0, min(2.0, float(strength)))
+    rng = 1 + (rng - 1) * k
+    if lang.split("-")[0].lower() in TONAL:
+        rng = 1.0
+    return (1 + (shift - 1) * k, rng, 1 + (tempo - 1) * k, level * k,
+            tone.format(g=f"{tone_db * k:.2f}"))
+
+
+def _active_db(path: str) -> float | None:
+    """Speaking level: mean power of 20 ms frames above -45 dBFS."""
+    import numpy as np
+    import parselmouth
+    snd = parselmouth.Sound(path)
+    y = snd.values[0]
+    n = max(1, int(0.02 * snd.sampling_frequency))
+    fr = y[: len(y) // n * n].reshape(-1, n)
+    db = 10 * np.log10(np.maximum(1e-12, (fr ** 2).mean(axis=1)))
+    act = db[db > -45]
+    return float(10 * np.log10(np.mean(10 ** (act / 10)))) if act.size else None
+
+
+def shape_svara(path: str, emotion: str, strength: float = 1.0, lang: str = "",
+                volume: float = 1.0) -> bool:
+    """Shape a svara render in place for `emotion` (see SVARA_PROFILES).
+    `volume` is the user's own volume slider, kept on top of the feeling."""
+    import math
+    import subprocess
+    prof = svara_profile(emotion, strength, lang)
+    if not prof:
+        return False
+    shift, rng, tempo, level, tone = prof
+    if not _reshape(path, emotion, shift, rng, tempo, 0.0):
+        return False
+    tmp, tmp2 = path + ".tone.wav", path + ".lvl.wav"
+    try:
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-af", tone, tmp],
+                           capture_output=True, timeout=60)
+        src = tmp if r.returncode == 0 and os.path.exists(tmp) else path
+        have = _active_db(src)
+        target = SVARA_LEVEL_DB + level + 20 * math.log10(max(0.05, float(volume or 1.0)))
+        # up to 24 dB: the anger compressor alone takes ~11 dB off (measured)
+        gain = 0.0 if have is None else max(-24.0, min(24.0, target - have))
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-af",
+                            f"volume={gain:.2f}dB,alimiter=limit=0.97:level=0", tmp2],
+                           capture_output=True, timeout=60)
+        if r.returncode == 0 and os.path.exists(tmp2):
+            os.replace(tmp2, path)
+    except Exception as e:  # the reshaped audio is still good without tone/level
+        print(f"[expressive_dsp] svara tone {emotion}: {e!r}")
+    finally:
+        for t in (tmp, tmp2):
+            if os.path.exists(t):
+                os.unlink(t)
+    return True
+
+
 def shape(path: str, emotion: str, intensity: float = 1.0, lang: str = "") -> bool:
     """Reshape the WAV at `path` in place. Returns False when nothing applies
     or Praat is unavailable/fails (the caller keeps the original audio)."""
     prof = profile(emotion, intensity, lang)
     if not prof:
         return False
-    shift, rng, tempo, gain = prof
+    return _reshape(path, emotion, *prof)
+
+
+def _reshape(path: str, emotion: str, shift: float, rng: float, tempo: float, gain: float) -> bool:
     try:
         import parselmouth
         from parselmouth.praat import call

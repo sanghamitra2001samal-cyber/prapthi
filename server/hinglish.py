@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from speech_text import TEXT_OFF
+
 # Common romanized Hindi -> Devanagari. Lowercased keys.
 _DICT: dict[str, str] = {
     # pronouns
@@ -625,6 +627,7 @@ _SCRIPTS = {
     "te": ("telu", _TE_CONSONANTS, "\u0c4d"),
     "ta": ("taml", _TA_CONSONANTS, "\u0bcd"),
     "mr": ("deva", frozenset(), ""),
+    "deva": ("deva", frozenset(), ""),       # the regional Devanagari languages
     "bn": ("beng", frozenset(), ""),
     "gu": ("gujr", frozenset(), ""),
     "kn": ("knda", frozenset(chr(c) for c in range(0x0C95, 0x0CBA)), "\u0ccd"),
@@ -645,7 +648,18 @@ _SCRIPT_VOICE = {
     "ml": re.compile(r"^(mms-mal|svara-ml|parler-ml|ml_IN-|if5-ml)"),
     "pa": re.compile(r"^(mms-pan|svara-pa|parler-pa|if5-pa)"),
     "or": re.compile(r"^(mms-ory|svara-or|parler-or|if5-or)"),
+    # Regional languages (9-10 Nov 2026). Only the voices that cannot read
+    # Latin at all: MMS deletes it and svara derails. Parler reads English
+    # itself, so it is left alone.
+    # Assamese: English words in its own letters, through the Bengali speller
+    # (same script) with Assamese ra. Parler reads English itself.
+    "as": re.compile(r"^(mms-asm|svara-as-)"),
+    **{code: re.compile(rf"^(mms-{code}|svara-{code}-)") for code in
+       ("bgc", "mag", "gbm", "kru", "sck", "xnr", "bfy", "mup", "hoc", "unr", "hne", "mai", "doi", "brx")},
 }
+# The script each of those languages writes in, where it is not its own key.
+_SCRIPT_OF = {**dict.fromkeys(("bgc", "mag", "gbm", "kru", "sck", "xnr", "bfy", "mup",
+                               "hne", "mai", "doi", "brx"), "deva"), "hoc": "or", "unr": "or"}
 
 
 def _english_word(tok: str, lang: str) -> str:
@@ -683,12 +697,27 @@ def script_language(voice_id: str) -> str:
     """The language code (a key of _SCRIPTS) of a voice whose English words
     need its own script, or ""."""
     v = (voice_id or "").replace("server:", "")
-    return next((lang for lang, rx in _SCRIPT_VOICE.items() if rx.match(v)), "")
+    lang = next((lang for lang, rx in _SCRIPT_VOICE.items() if rx.match(v)), "")
+    if lang == "as" and "as-en" in TEXT_OFF:
+        return ""
+    if lang in TEXT_OFF:
+        # Switched off: back to how these voices read before. The IndicF5
+        # voices of kn/ml/pa/or answer "keep" (not a script, so to_script
+        # leaves the text alone) and never reach the Hindi converter; if5-gu
+        # goes back to that converter, as it did before.
+        return "keep" if v.startswith("if5-") and lang in ("kn", "ml", "pa", "or") else ""
+    return _SCRIPT_OF.get(lang, lang)
 
 
 def to_script(text: str, lang: str) -> str:
     """Latin words in `text` rewritten in the script of `lang` (a key of
     _SCRIPTS). Text already in that script is left exactly as it is."""
+    if lang == "as":
+        if not _HAS_LATIN.search(text):
+            return text
+        out = "".join(_english_word(t, "bn").replace("\u09b0", "\u09f0")
+                      if t[0].isascii() and t[0].isalpha() else t for t in _TOKEN.findall(text))
+        return unicodedata.normalize("NFC", out)
     if lang not in _SCRIPTS or not _HAS_LATIN.search(text):
         return text
     # Only the Latin runs: _TOKEN's other runs are the customer's own text, and

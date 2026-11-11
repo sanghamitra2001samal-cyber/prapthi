@@ -1,6 +1,6 @@
 # Ayaan Voice backend — base + default neural engines (pinned for reproducible,
 # scannable builds). Heavy MMS/Parler deps live in requirements-heavy.txt.
-starlette==1.3.0
+starlette==1.3.1  # 1.3.1 fixes form-upload limits being ignored (PYSEC-2026-249)
 uvicorn==0.49.0
 # WebSocket support in uvicorn, for live speech (tts_live.py).
 websockets==15.0.1

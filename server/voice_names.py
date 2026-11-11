@@ -117,6 +117,10 @@ _POOLS: dict[str, dict[str, list[str]]] = {
 _SPARE = {
     "bho": {"female": ["Sunita", "Lalita", "Savitri", "Shanti"],
             "male":   ["Dinesh", "Santosh", "Manoj", "Rajan"]},
+    # 10 Nov 2026: the new svara voices used these pools up and were shown as
+    # "Bhanu 2" and "Kalpana 2". (Not Rimi/Raju: those are Bodo child voices.)
+    "hne": {"female": ["Sarita", "Kamla", "Rajkumari"], "male": ["Ramesh", "Tularam"]},
+    "brx": {"female": ["Jwngshri", "Mainao", "Rashmi"], "male": ["Gwmbwr", "Dwimalu"]},
 }
 # Indian English should sound Indian, not Western.
 _POOLS["en-IN"] = {"female": ["Anaya", "Rhea", "Tanvi", "Aditi"],
@@ -239,7 +243,9 @@ _ADDED_8NOV = frozenset({
     "eu_ES-antton-medium", "eu_ES-maider-medium", "et_EE-news-medium", "cy_GB-bu_tts-medium",
     "ef_dora", "em_alex", "if_sara", "im_nicola", "pf_dora", "pm_alex", "ff_siwis",
     "if5-ta-f", "if5-ta-m", "if5-kn-f", "if5-kn-m", "if5-ml-f", "if5-ml-m",
-    "if5-pa-f", "if5-pa-m", "if5-or-f", "if5-or-m"})  # 9 Nov 2026
+    "if5-pa-f", "if5-pa-m", "if5-or-f", "if5-or-m",  # 9 Nov 2026
+    "svara-mag-f", "svara-mag-m", "svara-mai-f", "svara-mai-m", "svara-hne-f", "svara-hne-m",
+    "svara-brx-f", "svara-brx-m", "svara-doi-f", "svara-doi-m", "svara-as-m", "svara-ne-m"})
 
 
 def _named_late(voice_id: str) -> int:
