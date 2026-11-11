@@ -1,7 +1,15 @@
 api.prapthi.ai, prapthi.ai {
 	handle /api/* {
+		# 11 Nov 2026: a hard ceiling on any upload (dubbing allows 200 MB),
+		# enforced here even when the client sends no Content-Length. The app
+		# then applies each route's own, smaller limit.
+		request_body {
+			max_size 210MB
+		}
 		uri strip_prefix /api
 		reverse_proxy 127.0.0.1:8000 {
+			# Do not advertise the server software.
+			header_down -Server
 			transport http {
 				response_header_timeout 900s
 				read_timeout 900s
@@ -11,8 +19,22 @@ api.prapthi.ai, prapthi.ai {
 
 	handle_path /app/* {
 		root * /home/apple/prapthi/web-dist-app
+		# 8 Nov 2026. Built files carry a hash of their content in the name, so
+		# a given name never changes: cache them for a year.
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		# Everything else (index.html behind every studio route, the manifest,
+		# icons) is re-checked on every visit: with no header at all, browsers
+		# kept the old studio for hours after a deploy. A re-check that finds
+		# nothing new is a 304 thanks to the ETag.
+		@unhashed not path /assets/*
+		header @unhashed Cache-Control "no-cache"
 		try_files {path} /index.html
-		file_server
+		# 11 Nov 2026: never serve dotfiles (.htaccess, macOS ._ files) or
+		# backup copies, even if one is copied up by mistake.
+		file_server {
+			hide .* *.bak *.orig *~
+		}
 	}
 
 	handle {
@@ -31,7 +53,9 @@ api.prapthi.ai, prapthi.ai {
 		# No /index.html fallback: a static site should answer 404 for a page
 		# that does not exist, not hand back the homepage with a 200.
 		try_files {path} {path}.html
-		file_server
+		file_server {
+			hide .* *.bak *.orig *~
+		}
 	}
 
 	handle_errors {
@@ -47,9 +71,27 @@ api.prapthi.ai, prapthi.ai {
 		zstd better
 		gzip
 	}
+
+	# Every response: HTTPS only from now on (one year; no subdomains, so the
+	# mail and other records on prapthi.ai are unaffected), and no software
+	# banner. "?" only fills a header the API has not already set.
 	header {
-		X-Content-Type-Options nosniff
-		Referrer-Policy no-referrer
+		Strict-Transport-Security "max-age=31536000"
+		?X-Content-Type-Options nosniff
+		?Referrer-Policy no-referrer
+		-Server
+	}
+
+	# The website and the studio (not the API, which sets its own, and whose
+	# embed player is meant to be shown on other sites): no other site may
+	# frame these pages (stops click-jacking of login and payment), no
+	# plugins, no rewritten base URL, and no camera or location access. The
+	# microphone stays allowed for the studio's own voice tools.
+	@pages not path /api/*
+	header @pages {
+		X-Frame-Options DENY
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+		Permissions-Policy "camera=(), geolocation=(), usb=(), microphone=(self)"
 	}
 }
 

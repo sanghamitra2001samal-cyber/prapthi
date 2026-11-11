@@ -181,3 +181,32 @@ def record_attempt(key: str) -> None:
 
 def clear_attempts(key: str) -> None:
     _attempts.pop(key, None)
+
+
+# Limits with their own size and window (login_blocked above is fixed at
+# 10 per 5 minutes). Same store, so clear_attempts works on these keys too.
+def over_limit(key: str, limit: int, window: float) -> bool:
+    """True when `key` already has `limit` attempts inside `window` seconds.
+    Does not count this call; pair it with record_attempt."""
+    now = time.time()
+    q = _attempts[key]
+    while q and now - q[0] > window:
+        q.popleft()
+    return len(q) >= limit
+
+
+def hit(key: str, limit: int, window: float) -> bool:
+    """Count one use of `key`; True when that use goes over the limit (and is
+    then not counted, so a blocked caller cannot extend their own block)."""
+    if over_limit(key, limit, window):
+        return True
+    _attempts[key].append(time.time())
+    return False
+
+
+def prune(max_age: float = 3600.0) -> None:
+    """Drop keys with no attempt in the last `max_age` seconds, so one
+    request from each of a million addresses cannot grow memory forever."""
+    now = time.time()
+    for k in [k for k, q in _attempts.items() if not q or now - q[-1] > max_age]:
+        _attempts.pop(k, None)

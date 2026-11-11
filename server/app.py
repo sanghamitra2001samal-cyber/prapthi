@@ -16,6 +16,7 @@ import json
 import random
 import re
 import contextlib
+from html import escape as html_escape
 import os
 import subprocess
 import uuid
@@ -36,6 +37,7 @@ from starlette.responses import (
     StreamingResponse,
 )
 from starlette.routing import Route
+from starlette.exceptions import HTTPException
 
 import auth
 import cache
@@ -318,20 +320,85 @@ threading.Thread(target=_warmup, daemon=True).start()
 _hits: dict[str, deque[float]] = defaultdict(deque)
 
 
-def _rate_limited(ip: str) -> bool:
+_last_prune = [0.0]
+
+
+def _prune_limits() -> None:
+    """Forget addresses idle for an hour (at most once a minute), so the
+    limiter's memory cannot grow without bound."""
+    now = time.time()
+    if now - _last_prune[0] < 60:
+        return
+    _last_prune[0] = now
+    for k in [k for k, q in _hits.items() if not q or now - q[-1] > 3600]:
+        _hits.pop(k, None)
+    auth.prune()
+
+
+def _rate_limited(ip: str, limit: int | None = None, window: float = 60.0) -> bool:
+    _prune_limits()
     now = time.time()
     q = _hits[ip]
-    while q and now - q[0] > 60:
+    while q and now - q[0] > window:
         q.popleft()
-    if len(q) >= RATE_LIMIT:
+    if len(q) >= (RATE_LIMIT if limit is None else limit):
         return True
     q.append(now)
     return False
 
 
 def _client_ip(request: Request) -> str:
+    # The API listens on 127.0.0.1 only, so every request comes through Caddy,
+    # which sets X-Forwarded-For to the address it saw. Read the LAST entry:
+    # anything before it was written by the client and can be made up, which
+    # let one caller pose as endless addresses and skip every per-IP limit.
     fwd = request.headers.get("x-forwarded-for")
-    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?")
+    if fwd:
+        last = fwd.split(",")[-1].strip()
+        if last:
+            return last
+    return request.client.host if request.client else "?"
+
+
+# The public "try it" box on the website, no login. Only the voices those
+# pages actually play are accepted: before 11 Nov 2026 any voice id worked,
+# so anyone could run the paid GPU voices (and WAV) free with no account.
+# Taken from site/assets/prapthi-api.js, data.js, playground.html and the
+# data-voiceid cards: add a voice here when a page starts using it.
+_DEMO_VOICE = re.compile(
+    r"svara-(en|hi|te|ta|kn|ml|mr|bn|gu|pa|sa)-[mf]|svara-(as|ne|or)-f"
+    r"|af_heart|am_michael|hf_alpha|hm_omega|ml_IN-meera-medium|te_IN-maya-medium"
+)
+_DEMO_PER_IP = int(os.environ.get("PRAPTHI_DEMO_PER_IP", "20"))      # per minute
+_DEMO_GLOBAL = int(os.environ.get("PRAPTHI_DEMO_GLOBAL", "150"))     # per minute, everyone
+
+# Per-account limits on the studios that start heavy work. Generous for a
+# person, small for a script. path prefix -> (requests, seconds).
+_STUDIO_LIMITS = (
+    ("/agent/chat", 30, 60),
+    ("/agent/voice", 20, 60),
+    ("/stt/fast", 60, 60),
+    ("/melody/summary", 60, 60),
+    ("/dub", 20, 600),
+    ("/isolate", 20, 600),
+    ("/transcribe", 30, 600),
+    ("/audiobook", 10, 600),
+    ("/audionative", 10, 600),
+    ("/ads", 20, 600),
+    ("/sfx", 20, 600),
+    ("/song/", 30, 600),
+    ("/melody/render", 30, 600),
+    ("/voices/clone", 10, 600),
+)
+
+
+def _studio_limit(path: str) -> tuple[str, int, int] | None:
+    """The limit for a POST to `path`, or None. Plain prefix match: no two
+    routes share a prefix by accident (checked against the route table)."""
+    for prefix, n, secs in _STUDIO_LIMITS:
+        if path.startswith(prefix):
+            return prefix, n, secs
+    return None
 
 
 # --- auth ------------------------------------------------------------------ #
@@ -404,13 +471,37 @@ async def signup(request: Request) -> JSONResponse:
         # Unverified re-signup: refresh the password so they can complete it.
         await db.set_password(email, auth.hash_record(password))
 
-    code = auth.gen_code()
-    await db.store_code(email, "verify", auth.hash_code(code), auth.CODE_TTL)
-    email_service.send_verification(email, code)
+    # At most 5 codes an hour per email, shared with "resend": every new code
+    # restarts the 5 guesses, so unlimited codes meant unlimited guesses.
+    if not auth.hit("sent:verify:" + email, *_CODES_SENT_PER_EMAIL):
+        code = auth.gen_code()
+        await db.store_code(email, "verify", auth.hash_code(code), auth.CODE_TTL)
+        email_service.send_verification(email, code)
     return JSONResponse({"ok": True, "message": "Verification code sent."})
 
 
+# Guessing a 6-digit code. Each code already dies after 5 wrong tries, but a
+# fresh code could be requested again and again, and nothing limited wrong
+# guesses per address or per account. Counted on failures only.
+_CODE_FAILS_PER_IP = (20, 900)        # per 15 minutes
+_CODE_FAILS_PER_EMAIL = (10, 3600)    # per hour, across every code sent
+_CODES_SENT_PER_EMAIL = (5, 3600)     # verification / reset emails per hour
+_LOGIN_FAILS_PER_EMAIL = (20, 900)    # wrong passwords per account, 15 minutes
+_TOO_MANY = {"error": "too many attempts, try again later"}
+
+
+def _code_blocked(ip: str, email: str) -> bool:
+    return (auth.over_limit("codeip:" + ip, *_CODE_FAILS_PER_IP)
+            or auth.over_limit("codemail:" + email, *_CODE_FAILS_PER_EMAIL))
+
+
+def _code_failed(ip: str, email: str) -> None:
+    auth.record_attempt("codeip:" + ip)
+    auth.record_attempt("codemail:" + email)
+
+
 async def verify_email(request: Request) -> JSONResponse:
+    ip = _client_ip(request)
     body = await _read_json(request)
     if body is None:
         return JSONResponse({"error": "invalid JSON"}, status_code=400)
@@ -418,7 +509,10 @@ async def verify_email(request: Request) -> JSONResponse:
     code = str(body.get("code", "")).strip()
     if not (email and code):
         return JSONResponse({"error": "email and code required"}, status_code=400)
+    if _code_blocked(ip, email):
+        return JSONResponse(_TOO_MANY, status_code=429)
     if not await db.consume_code(email, "verify", auth.hash_code(code)):
+        _code_failed(ip, email)
         return JSONResponse({"error": "Invalid or expired code."}, status_code=400)
     await db.mark_verified(email)
     email_service.send_welcome(email)
@@ -435,7 +529,9 @@ async def resend_code(request: Request) -> JSONResponse:
     email = str(body.get("email", "")).strip().lower()
     auth.record_attempt("resend:" + ip)
     user = await db.get_user(email)
-    if user and not user["is_verified"]:
+    # The same generic answer either way, so the cap reveals nothing.
+    if (user and not user["is_verified"]
+            and not auth.hit("sent:verify:" + email, *_CODES_SENT_PER_EMAIL)):
         code = auth.gen_code()
         await db.store_code(email, "verify", auth.hash_code(code), auth.CODE_TTL)
         email_service.send_verification(email, code)
@@ -453,14 +549,21 @@ async def login(request: Request) -> JSONResponse:
         return JSONResponse({"error": "invalid JSON"}, status_code=400)
     email = str(body.get("email", body.get("username", ""))).strip().lower()
     password = str(body.get("password", ""))
+    # Per account as well as per address: a guesser spread over many
+    # addresses still gets only 20 tries an hour at any one account. The same
+    # for unknown emails, so a 429 does not reveal which accounts exist.
+    if auth.over_limit("loginmail:" + email, *_LOGIN_FAILS_PER_EMAIL):
+        return JSONResponse(_TOO_MANY, status_code=429)
 
     user = await db.get_user(email)
     if not user:
         auth.dummy_verify(password)  # constant-time-ish
         auth.record_attempt(ip)
+        auth.record_attempt("loginmail:" + email)
         return JSONResponse({"error": "Invalid email or password."}, status_code=401)
     if not auth.verify_password(password, db.password_record(user)):
         auth.record_attempt(ip)
+        auth.record_attempt("loginmail:" + email)
         return JSONResponse({"error": "Invalid email or password."}, status_code=401)
     if not user["is_verified"]:
         return JSONResponse(
@@ -468,6 +571,7 @@ async def login(request: Request) -> JSONResponse:
             status_code=403,
         )
     auth.clear_attempts(ip)
+    auth.clear_attempts("loginmail:" + email)
     await db.touch_login(email)
     email_service.send_login_alert(email)
     resp = JSONResponse(
@@ -560,7 +664,8 @@ async def forgot_password(request: Request) -> JSONResponse:
     email = str(body.get("email", "")).strip().lower()
     auth.record_attempt("forgot:" + ip)
     user = await db.get_user(email)
-    if user:  # only send to real accounts, but always return generic
+    # Only real accounts, at most 5 codes an hour each; always the generic reply.
+    if user and not auth.hit("sent:reset:" + email, *_CODES_SENT_PER_EMAIL):
         code = auth.gen_code()
         await db.store_code(email, "reset", auth.hash_code(code), auth.CODE_TTL)
         email_service.send_reset(email, code)
@@ -568,6 +673,7 @@ async def forgot_password(request: Request) -> JSONResponse:
 
 
 async def reset_password(request: Request) -> JSONResponse:
+    ip = _client_ip(request)
     body = await _read_json(request)
     if body is None:
         return JSONResponse({"error": "invalid JSON"}, status_code=400)
@@ -577,7 +683,10 @@ async def reset_password(request: Request) -> JSONResponse:
     problem = auth.password_problem(password)
     if problem:
         return JSONResponse({"error": problem}, status_code=400)
+    if _code_blocked(ip, email):
+        return JSONResponse(_TOO_MANY, status_code=429)
     if not await db.consume_code(email, "reset", auth.hash_code(code)):
+        _code_failed(ip, email)
         return JSONResponse({"error": "Invalid or expired code."}, status_code=400)
     # set_password also revokes all existing sessions for the account.
     await db.set_password(email, auth.hash_record(password))
@@ -843,6 +952,8 @@ async def clone_create(request: Request) -> JSONResponse:
     raw = await request.body()
     if not raw or len(raw) < 2000:
         return JSONResponse({"error": "audio sample required"}, status_code=400)
+    if _not_media(raw):
+        return JSONResponse({"error": _NOT_MEDIA}, status_code=400)
 
     CLONE_DIR.mkdir(exist_ok=True)
     vid = uuid.uuid4().hex
@@ -900,6 +1011,8 @@ async def if5_clone_create(request: Request) -> JSONResponse:
     raw = await request.body()
     if not raw or len(raw) < 2000:
         return JSONResponse({"error": "audio sample required"}, status_code=400)
+    if _not_media(raw):
+        return JSONResponse({"error": _NOT_MEDIA}, status_code=400)
     CLONE_DIR.mkdir(exist_ok=True)
     vid = uuid.uuid4().hex
     out = CLONE_DIR / f"if5_{vid}.wav"
@@ -1617,6 +1730,36 @@ def _run_dub_pipeline(jid: str, in_path: str, ext: str, tgt: str,
                 pass
 
 
+_SAFE_EXT = re.compile(r"\.[a-z0-9]{1,5}")
+
+
+def _upload_ext(upload, default: str) -> str:
+    """The uploaded file's extension if it is a plain one (".mp4"), else
+    `default`. It becomes part of a path on disk, so nothing else gets in."""
+    ext = os.path.splitext(getattr(upload, "filename", "") or "")[1].lower()
+    return ext if _SAFE_EXT.fullmatch(ext) else default
+
+
+def _not_media(data: bytes) -> bool:
+    """True for an upload that is plain text rather than audio or video.
+
+    ffmpeg reads playlists and scripts (HLS "#EXTM3U", "ffconcat", SDP) that
+    can point it at other files on the server or at network addresses. Every
+    real media container has binary bytes (a NUL) in its first kilobyte, and
+    an MP3 without tags starts with 0xFF, which is never valid UTF-8 text."""
+    head = data[:1024]
+    if not head or b"\x00" in head:
+        return False
+    try:
+        head.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+_NOT_MEDIA = "That file is not audio or video. Please upload a recording or a video."
+
+
 async def _charge(email: str, op: str, seconds: float = 1.0):
     # The owner is not billed for their own platform.
     _acct = await db.get_account(email)
@@ -1641,6 +1784,42 @@ async def _charge(email: str, op: str, seconds: float = 1.0):
     )
 
 
+async def _voice_and_chars(user: dict, voice: str, chars: int):
+    """For the studios that read text aloud (audiobook, article audio, ads).
+
+    Until 11 Nov 2026 they checked neither the plan's voices nor the monthly
+    allowance: a free account could narrate 200,000 characters at a time in
+    a paid GPU voice, as often as it liked. Now they follow /synthesize: paid
+    voices need a paid plan, and each character is charged up front.
+    Returns (refusal or None, characters charged)."""
+    account = await db.get_account(user["email"])
+    base, _age = age_voice.split(voice)
+    if not entitlements.may_use_voice(account, base):
+        return JSONResponse({"error": entitlements.UPGRADE_VOICE,
+                             "code": "upgrade_required"}, status_code=402), 0
+    if user.get("is_admin") or chars <= 0:
+        return None, 0
+    await db.reset_period_if_due(user["email"])
+    ok, _left = await db.consume_chars(user["email"], chars)
+    if not ok:
+        return JSONResponse({"error": "You do not have enough characters left this "
+                                      "month for this. Shorten it, or upgrade your plan.",
+                             "code": "quota_exceeded"}, status_code=402), 0
+    return None, chars
+
+
+def _refund_from_thread(who: str | None, owed: int, what: str) -> None:
+    """Give characters back from a studio's worker thread after a failure."""
+    if not (owed and who):
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(
+            db.refund_chars(who, owed), _LOOP).result(timeout=10)
+        print(f"[{what}] refunded {owed} characters to {who}")
+    except Exception as e:
+        print(f"[{what}] REFUND FAILED for {who}: {e!r}")
+
+
 async def dub_create(request: Request) -> JSONResponse:
     user = await _current_user(request)
     if not user:
@@ -1653,14 +1832,24 @@ async def dub_create(request: Request) -> JSONResponse:
     if tgt not in DUB_VOICE:
         return JSONResponse({"error": f"Unsupported language '{tgt}'."}, status_code=400)
     voice = str(form.get("voice", "")).strip() or DUB_VOICE[tgt]
+    # A voice the customer picked must be on their plan. The default voices
+    # (DUB_VOICE, partly Parler) stay open to everyone, as before: dubbing
+    # is already charged by the second.
+    if (str(form.get("voice", "")).strip()
+            and not entitlements.may_use_voice(await db.get_account(user["email"]),
+                                               age_voice.split(voice)[0])):
+        return JSONResponse({"error": entitlements.UPGRADE_VOICE,
+                             "code": "upgrade_required"}, status_code=402)
     try:
         keep_bg = max(0.0, min(float(form.get("keep_bg", 0) or 0), 1.0))
     except (TypeError, ValueError):
         keep_bg = 0.0
-    ext = os.path.splitext(getattr(upload, "filename", "") or "")[1].lower() or ".mp4"
+    ext = _upload_ext(upload, ".mp4")
     data = await upload.read()
     if len(data) > 200 * 1024 * 1024:
         return JSONResponse({"error": "File too large (max 200MB)."}, status_code=400)
+    if _not_media(data):
+        return JSONResponse({"error": _NOT_MEDIA}, status_code=400)
     DUB_DIR.mkdir(exist_ok=True)
     jid = uuid.uuid4().hex
     in_path = str(DUB_DIR / f"{jid}_in{ext}")
@@ -1896,8 +2085,11 @@ async def agent_voice(request: Request) -> JSONResponse:
     import tempfile as _tf
     src = _tf.mktemp(suffix=".webm")
     wav = _tf.mktemp(suffix=".wav")
+    _audio = await upload.read()
+    if _not_media(_audio):
+        return JSONResponse({"error": _NOT_MEDIA}, status_code=400)
     with open(src, "wb") as f:
-        f.write(await upload.read())
+        f.write(_audio)
 
     def _work():
         dubbing.extract_audio(src, wav)
@@ -2075,6 +2267,8 @@ def _run_audiobook(jid: str, text: str, voice: str, gap_ms: int) -> None:
                 pass
     except Exception as e:
         print(f"[audiobook] {jid} failed: {e!r}")
+        _refund_from_thread(_book_jobs[jid].get("owner"), _book_jobs[jid].get("charged", 0),
+                            "audiobook")
         _book_jobs[jid].update(status="failed", step="Failed", error=_public_error(e))
 
 
@@ -2091,9 +2285,12 @@ async def audiobook_create(request: Request) -> JSONResponse:
         gap_ms = max(0, min(int(body.get("gap_ms", 400)), 2000))
     except (TypeError, ValueError):
         gap_ms = 400
+    refused, charged = await _voice_and_chars(user, voice, len(text))
+    if refused is not None:
+        return refused
     jid = uuid.uuid4().hex
     _book_jobs[jid] = {"status": "queued", "step": "Queued", "progress": 0,
-                       "owner": user["email"]}
+                       "owner": user["email"], "charged": charged}
     asyncio.create_task(run_in_threadpool(_run_audiobook, jid, text, voice, gap_ms))
     return JSONResponse({"id": jid})
 
@@ -2168,6 +2365,8 @@ def _run_audionative(aid: str, text: str, voice: str, title: str, owner: str) ->
         _an_jobs[aid].update(status="done", step="Completed", progress=100)
     except Exception as e:
         print(f"[audionative] {aid} failed: {e!r}")
+        _refund_from_thread(_an_jobs[aid].get("owner"), _an_jobs[aid].get("charged", 0),
+                            "audionative")
         _an_jobs[aid].update(status="failed", step="Failed", error=_public_error(e))
 
 
@@ -2181,12 +2380,15 @@ async def audionative_create(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Add more text."}, status_code=400)
     title = (str(body.get("title", "")).strip() or "Listen to this article")[:120]
     voice = str(body.get("voice", "af_heart")).strip()
+    refused, charged = await _voice_and_chars(user, voice, len(text))
+    if refused is not None:
+        return refused
     aid = uuid.uuid4().hex
     _an_jobs[aid] = {"status": "queued", "step": "Queued", "progress": 0,
-                     "owner": user["email"], "title": title}
+                     "owner": user["email"], "title": title, "charged": charged}
     asyncio.create_task(run_in_threadpool(
         _run_audionative, aid, text, voice, title, user["email"]))
-    host = request.headers.get("host", "prapthi.ai")
+    host = _public_host(request)
     return JSONResponse({"id": aid, "embed_url": f"https://{host}/api/embed/{aid}"})
 
 
@@ -2198,7 +2400,7 @@ async def audionative_status(request: Request) -> JSONResponse:
     # also report done if the file exists (survives restarts)
     aid = request.path_params["aid"]
     if (AN_DIR / f"{aid}.mp3").exists():
-        host = request.headers.get("host", "prapthi.ai")
+        host = _public_host(request)
         return JSONResponse({"status": "done", "progress": 100,
                              "embed_url": f"https://{host}/api/embed/{aid}"})
     if not j or j.get("owner") != user["email"]:
@@ -2230,24 +2432,56 @@ s.oninput=function(){{if(a.duration)a.currentTime=s.value*a.duration/100}};
 </script></body></html>"""
 
 
+def _public_host(request: Request) -> str:
+    """Our own host name for links we hand out. The Host header comes from the
+    client, so only the two names Caddy serves are ever echoed back."""
+    host = (request.headers.get("host") or "").lower()
+    return host if host in ("prapthi.ai", "api.prapthi.ai") else "prapthi.ai"
+
+
+def _embed_csp() -> str:
+    # The player's one inline script, allowed by its hash and nothing else,
+    # so text in a title can never run as script. Framing is the point of
+    # this page, so any site may embed it.
+    import base64 as _b64
+    import hashlib as _hl
+    page = _EMBED_HTML.format(title="", audio="")
+    script = page.split("<script>", 1)[1].split("</script>", 1)[0]
+    digest = _b64.b64encode(_hl.sha256(script.encode("utf-8")).digest()).decode()
+    return (f"default-src 'none'; script-src 'sha256-{digest}'; "
+            "style-src 'unsafe-inline'; media-src 'self'; base-uri 'none'; "
+            "form-action 'none'; frame-ancestors *")
+
+
+_EMBED_CSP = _embed_csp()
+
+
 async def embed_player(request: Request) -> Response:
     aid = request.path_params["aid"]
+    if not _SAFE_ID.fullmatch(aid):
+        return Response("Not found", status_code=404)
     meta_p = AN_DIR / f"{aid}.json"
     if not (AN_DIR / f"{aid}.mp3").exists():
         return Response("Not found", status_code=404)
     title = "Listen to this article"
     try:
-        title = json.loads(meta_p.read_text()).get("title", title)
+        title = str(json.loads(meta_p.read_text()).get("title", title))
     except Exception:
         pass
-    host = request.headers.get("host", "prapthi.ai")
-    html = _EMBED_HTML.format(title=title, audio=f"https://{host}/api/embed/{aid}/audio")
-    return Response(html, media_type="text/html",
-                    headers={"X-Frame-Options": "ALLOWALL", "Access-Control-Allow-Origin": "*"})
+    # The title is the customer's own text, shown on other people's sites:
+    # escape it (before 11 Nov 2026 it went into the page raw).
+    page = _EMBED_HTML.format(
+        title=html_escape(title, quote=True),
+        audio=f"https://{_public_host(request)}/api/embed/{aid}/audio")
+    return Response(page, media_type="text/html",
+                    headers={"Content-Security-Policy": _EMBED_CSP,
+                             "Access-Control-Allow-Origin": "*"})
 
 
 async def embed_audio(request: Request) -> Response:
     aid = request.path_params["aid"]
+    if not _SAFE_ID.fullmatch(aid):
+        return Response("Not found", status_code=404)
     p = AN_DIR / f"{aid}.mp3"
     if not p.exists():
         return Response("Not found", status_code=404)
@@ -2388,6 +2622,7 @@ def _run_ads(aid: str, brief: str, lang: str, voice: str, tone: str, seconds: in
                               script_en=english)
     except Exception as e:
         print(f"[ads] {aid} failed: {e!r}")
+        _refund_from_thread(_ads_jobs[aid].get("owner"), _ads_jobs[aid].get("charged", 0), "ads")
         _ads_jobs[aid].update(status="failed", step="Failed", error=_public_error(e))
 
 
@@ -2406,9 +2641,14 @@ async def ads_create(request: Request) -> JSONResponse:
         seconds = max(10, min(int(body.get("seconds", 30)), 60))
     except (TypeError, ValueError):
         seconds = 30
+    # The script is written later by the model, so charge for the length
+    # asked for: ~15 spoken characters a second.
+    refused, charged = await _voice_and_chars(user, voice, seconds * 15)
+    if refused is not None:
+        return refused
     aid = uuid.uuid4().hex
     _ads_jobs[aid] = {"status": "queued", "step": "Queued", "progress": 0,
-                      "owner": user["email"]}
+                      "owner": user["email"], "charged": charged}
     asyncio.create_task(run_in_threadpool(_run_ads, aid, brief, lang, voice, tone, seconds))
     return JSONResponse({"id": aid})
 
@@ -2470,10 +2710,12 @@ async def isolate_create(request: Request) -> JSONResponse:
     upload = form.get("file")
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "No file uploaded."}, status_code=400)
-    ext = os.path.splitext(getattr(upload, "filename", "") or "")[1].lower() or ".mp3"
+    ext = _upload_ext(upload, ".mp3")
     data = await upload.read()
     if len(data) > 100 * 1024 * 1024:
         return JSONResponse({"error": "File too large (max 100MB)."}, status_code=400)
+    if _not_media(data):
+        return JSONResponse({"error": _NOT_MEDIA}, status_code=400)
     ISOLATE_DIR.mkdir(exist_ok=True)
     jid = uuid.uuid4().hex
     in_path = str(ISOLATE_DIR / f"{jid}_in{ext}")
@@ -2519,10 +2761,12 @@ async def transcribe_audio(request: Request) -> JSONResponse:
     upload = form.get("file")
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "No file uploaded."}, status_code=400)
-    ext = os.path.splitext(getattr(upload, "filename", "") or "")[1].lower() or ".mp3"
+    ext = _upload_ext(upload, ".mp3")
     data = await upload.read()
     if len(data) > 100 * 1024 * 1024:
         return JSONResponse({"error": "File too large (max 100MB)."}, status_code=400)
+    if _not_media(data):
+        return JSONResponse({"error": _NOT_MEDIA}, status_code=400)
     import tempfile as _tf
     src = _tf.mktemp(suffix=ext)
     wav = _tf.mktemp(suffix=".wav")
@@ -2596,8 +2840,12 @@ def _needs_english_in_devanagari(voice_id: str) -> bool:
 async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Response:
     ip = _client_ip(request)
     if demo:
-        # public demo: no login, but rate-limited + text-capped below
-        if _rate_limited(ip):
+        # public demo: no login, but rate-limited + text-capped below, and
+        # only the website's own voices. Its own buckets: a busy homepage must
+        # not use up a signed-in customer's limit from the same address, and
+        # the whole internet together gets _DEMO_GLOBAL renders a minute.
+        if (_rate_limited("demo:" + ip, _DEMO_PER_IP)
+                or _rate_limited("demo:*", _DEMO_GLOBAL)):
             return JSONResponse({"error": "rate limited"}, status_code=429)
     else:
         _user = await _current_user(request)
@@ -2614,6 +2862,9 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     voice_id = str(body.get("voiceId", "")).strip()
     if not voice_id:
         return JSONResponse({"error": "voiceId required"}, status_code=400)
+    if demo and not _DEMO_VOICE.fullmatch(voice_id):
+        return JSONResponse({"error": "That voice is not part of the free demo. "
+                                      "Sign in to use every voice."}, status_code=403)
     # Child / grandparent voice: render its adult voice, reshape at the end.
     req_vid = voice_id
     voice_id, _age = age_voice.split(voice_id)
@@ -2707,7 +2958,8 @@ async def _synth(request: Request, *, preview: bool, demo: bool = False) -> Resp
     # Unspecified means mp3: playback does not need a lossless file, and a
     # client that omits the field must never be refused for it.
     _asked_fmt = str(body.get("format", "")).lower()
-    fmt = "wav" if _asked_fmt == "wav" else "mp3"
+    # The free demo plays in the browser: MP3 only (WAV is a paid download).
+    fmt = "wav" if _asked_fmt == "wav" and not demo else "mp3"
     # The plans sell WAV as a *download* format, so only an explicit request
     # for one is gated — never playback.
     if (_asked_fmt == "wav" and not demo and _user
@@ -3367,10 +3619,16 @@ async def billing_verify(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Payment could not be verified."}, status_code=400)
 
     order = await run_in_threadpool(billing.fetch_order, order_id)
-    plan_id = (order or {}).get("notes", {}).get("plan", "")
+    order_notes = (order or {}).get("notes") or {}
+    plan_id = order_notes.get("plan", "")
     plan = billing.PLANS.get(plan_id)
     if not plan:
         return JSONResponse({"error": "Unknown plan on that order."}, status_code=400)
+    # The order was created for one account; only that account may claim it.
+    if str(order_notes.get("email", "")).lower() != user["email"].lower():
+        print(f"[billing] {user['email']} tried to claim order {order_id} "
+              f"made for another account")
+        return JSONResponse({"error": "Payment could not be verified."}, status_code=400)
 
     await db.mark_paid(payment_id, order_id, user["email"], plan_id,
                        plan["price"] * 100, "callback", plan["chars"],
@@ -3399,16 +3657,30 @@ async def billing_webhook(request: Request) -> JSONResponse:
 
     pay = (event.get("payload", {}).get("payment", {}).get("entity", {}))
     payment_id, order_id = pay.get("id", ""), pay.get("order_id", "")
-    notes = pay.get("notes") or {}
+    if not (payment_id and order_id):
+        return JSONResponse({"ok": True, "ignored": True})
+    # Plan and account come ONLY from the order this server created. The
+    # payment's own notes can be filled in by the buyer's browser at checkout,
+    # so before 11 Nov 2026 a Mid payment could carry plan "elite" and get it.
+    order = await run_in_threadpool(billing.fetch_order, order_id)
+    if not order:
+        # Razorpay retries a webhook that fails, so ask it to come back later.
+        return JSONResponse({"error": "order lookup failed"}, status_code=503)
+    notes = order.get("notes") or {}
     plan_id = notes.get("plan", "")
-    email = notes.get("email", "")
-    if not (payment_id and order_id and plan_id and email):
-        order = await run_in_threadpool(billing.fetch_order, order_id)
-        notes = (order or {}).get("notes", {})
-        plan_id = plan_id or notes.get("plan", "")
-        email = email or notes.get("email", "")
+    email = str(notes.get("email", "")).lower()
     plan = billing.PLANS.get(plan_id)
     if not (plan and email):
+        return JSONResponse({"ok": True, "ignored": True})
+    # Belt and braces: the money received must cover what the order asked for
+    # (the order's own amount, so a later price change cannot strand a payment).
+    try:
+        paid = int(pay.get("amount") or 0)
+        owed = int(order.get("amount") or 0)
+    except (TypeError, ValueError):
+        paid, owed = 0, 1
+    if owed <= 0 or paid < owed or str(pay.get("currency", "INR")).upper() != "INR":
+        print(f"[billing] webhook {payment_id}: paid {paid} of {owed} for {plan_id}, not granted")
         return JSONResponse({"ok": True, "ignored": True})
 
     granted = await db.mark_paid(payment_id, order_id, email, plan_id,
@@ -3606,23 +3878,69 @@ _SECURITY_HEADERS = {
 }
 
 
+def _body_limit(path: str) -> int:
+    # Voice-clone uploads carry an audio sample, so allow a larger body there.
+    if path in ("/voices/clone", "/voices/clone-if5", "/voices/clone-hd", "/song/extract"):
+        return MAX_CLONE_BODY
+    return _UPLOAD_LIMITS.get(path, MAX_BODY)
+
+
+class BodyLimitMiddleware:
+    """Count the body as it arrives and stop at the route's limit.
+
+    The Content-Length check below only catches a client that declares its
+    size. A chunked upload declares none, and was read into memory in full
+    (the app has been OOM-killed before). Raising 413 from inside receive()
+    stops reading at the limit; a handler that catches it answers 400."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        limit = _body_limit(scope.get("path", ""))
+        seen = 0
+
+        async def counted():
+            nonlocal seen
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > limit:
+                    raise HTTPException(413, "request too large")
+            return message
+
+        await self.app(scope, counted, send)
+
+
 class SecurityMiddleware(BaseHTTPMiddleware):
-    """Reject oversized request bodies (memory-DoS guard) and add hardening
-    headers to every response."""
+    """Reject oversized request bodies (memory-DoS guard), limit how often one
+    account can start heavy studio work, and add hardening headers."""
 
     async def dispatch(self, request: Request, call_next):
-        # Voice-clone uploads carry an audio sample, so allow a larger body there.
-        limit = (
-            MAX_CLONE_BODY
-            if request.url.path in ("/voices/clone", "/voices/clone-if5",
-                                     "/voices/clone-hd", "/song/extract")
-            else _UPLOAD_LIMITS.get(request.url.path, MAX_BODY)
-        )
+        path = request.url.path
         cl = request.headers.get("content-length")
-        if cl and cl.isdigit() and int(cl) > limit:
+        if cl and cl.isdigit() and int(cl) > _body_limit(path):
             return JSONResponse({"error": "request too large"}, status_code=413)
+        if request.method == "POST":
+            rule = _studio_limit(path)
+            if rule:
+                prefix, n, secs = rule
+                # Per account when signed in (checked from the cookie's
+                # signature alone, no database trip), else per address.
+                tok = auth.decode_token(request.cookies.get(auth.COOKIE_NAME))
+                who = ("u:" + tok["sub"]) if tok else ("ip:" + _client_ip(request))
+                if _rate_limited(f"studio:{prefix}:{who}", n, secs):
+                    return JSONResponse(
+                        {"error": "You are going a little fast. Please wait a few "
+                                  "minutes and try again."}, status_code=429)
         resp = await call_next(request)
         for k, v in _SECURITY_HEADERS.items():
+            # The embed player exists to be shown inside other sites; its own
+            # Content-Security-Policy says so, and X-Frame-Options would veto it.
+            if k == "X-Frame-Options" and path.startswith("/embed/"):
+                continue
             resp.headers.setdefault(k, v)
         return resp
 
@@ -3640,6 +3958,7 @@ else:
     )
 
 middleware = [
+    Middleware(BodyLimitMiddleware),
     Middleware(SecurityMiddleware),
     Middleware(
         CORSMiddleware,
